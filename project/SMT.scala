@@ -20,7 +20,7 @@ object SMT extends Build with MigrationHandling with DBHandling {
 
   val migrationsSource = SettingKey[File]("migrations-source", "base-directory for migration files")
 
-  val migrations = SettingKey[Seq[Migration]]("migrations", "sequence of migrations")
+  val migrations = TaskKey[Seq[Migration]]("migrations", "sequence of migrations")
 
   val transformedMigrations = TaskKey[Seq[Migration]]("transformed-migrations", "transformed migrations")
 
