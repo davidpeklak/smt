@@ -1,3 +1,4 @@
+import Util._
 
 class TestDatabase extends Database {
   db =>
@@ -9,7 +10,26 @@ class TestDatabase extends Database {
     type DB = TestDatabase
 
     def add(migrationInfo: MigrationInfo): Either[String, TestTransaction]  = {
+      println("adding " + migrationInfo)
       s =  s :+ migrationInfo
+      Right(this)
+    }
+
+    def addDowns(migHash: Seq[Byte], downs: Seq[String]): Either[String, TestTransaction] = {
+      println("adding " + downs)
+      db.ds = db.ds + (migHash -> downs)
+      Right(this)
+    }
+
+    def remove(hash: Seq[Byte]): Either[String, TestTransaction] = {
+      println("removing " + bytesToHex(hash))
+      s = s.filterNot(_.hash == hash)
+      Right(this)
+    }
+
+    def removeDowns(migHash: Seq[Byte]): Either[String, TestTransaction] = {
+      println("removing downs" + bytesToHex(migHash))
+      db.ds = db.ds - migHash
       Right(this)
     }
 
@@ -18,19 +38,16 @@ class TestDatabase extends Database {
       Right(this)
     }
 
-    def addDowns(migName: String, downs: Seq[String]): Either[String, TestTransaction] = {
-      db.downs = db.downs + (migName -> downs)
-      Right(this)
-    }
-
     def commit: DB = db
   }
 
   private var s: Seq[MigrationInfo] = Nil
 
-  private var downs: Map[String, Seq[String]] = Map()
+  private var ds: Map[Seq[Byte], Seq[String]] = Map()
 
   def state: Seq[MigrationInfo] = s
+
+  def downs(hash: Seq[Byte]): Seq[String] = ds(hash)
 
   def transaction: T = new TestTransaction
 }
