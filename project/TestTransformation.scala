@@ -1,8 +1,8 @@
 class TestTransformation extends Transformation {
-  def transform(bas: Seq[String]): Seq[String] = {
-    bas.map(_.map(b => {
-      if (b == 'o') 'i'
-      else b
-    }))
+  def transform(s: String): String = {
+    s.map(c => {
+      if (c == 'o') 'i'
+      else c
+    })
   }
 }

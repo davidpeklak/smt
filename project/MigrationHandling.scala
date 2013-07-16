@@ -4,7 +4,10 @@ import Util._
 
 trait MigrationHandling {
   protected def transformedMigrationsImpl(ms: Seq[Migration], ts: Seq[Transformation]): Seq[Migration] = {
-    ms.map(m => m.copy(ups = ts.foldLeft(m.ups)((ups, t) => t.transform(ups)), downs = ts.foldLeft(m.downs)((downs, t) => t.transform(downs))))
+    def transformScripts(ss: Seq[String]): Seq[String] = ss.map(s => {
+      ts.foldLeft(s)((s, t) => t.transform(s))
+    })
+    ms.map(m => m.copy(ups = transformScripts(m.ups), downs = transformScripts(m.downs)))
   }
 
   protected def showHashesImpl(ms: Seq[Migration], s: TaskStreams): Unit = {

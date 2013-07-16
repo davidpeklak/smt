@@ -1,3 +1,3 @@
 trait Transformation {
-  def transform(bas: Seq[String]): Seq[String]
+  def transform(s: String): String
 }
