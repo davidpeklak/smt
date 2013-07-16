@@ -1,7 +1,7 @@
 import java.util.Date
 import Util._
 
-case class MigrationInfo(name: String, hash: Array[Byte], dateTime: Date) {
+case class MigrationInfo(name: String, hash: Seq[Byte], dateTime: Date) {
   override def toString: String = {
     "MigrationInfo(" + name + "," + bytesToHex(hash) + "," + dateTime + ")"
   }
@@ -14,9 +14,9 @@ trait Transaction {
 
   def add(migrationInfo: MigrationInfo): Either[String, T]
 
-  def addDowns(migName: String, downs: Seq[Array[Byte]]): Either[String, T]
+  def addDowns(migName: String, downs: Seq[String]): Either[String, T]
 
-  def apply(script: Array[Byte]): Either[String, T]
+  def apply(script: String): Either[String, T]
 
   def commit: DB
 }

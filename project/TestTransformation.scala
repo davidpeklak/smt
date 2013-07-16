@@ -1,7 +1,7 @@
 class TestTransformation extends Transformation {
-  def transform(bas: Seq[Array[Byte]]): Seq[Array[Byte]] = {
+  def transform(bas: Seq[String]): Seq[String] = {
     bas.map(_.map(b => {
-      if (b == 'o'.toByte) 'i'.toByte
+      if (b == 'o') 'i'
       else b
     }))
   }

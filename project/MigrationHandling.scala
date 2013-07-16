@@ -13,11 +13,11 @@ trait MigrationHandling {
 
   private lazy val md = MessageDigest.getInstance("SHA")
 
-  protected def hashBytes(bs: Array[Byte]): Array[Byte] = md.digest(bs)
+  protected def hashBytes(bs: Seq[Byte]): Seq[Byte] = md.digest(bs.toArray).toSeq
 
-  protected def hashMigration(m: Migration, preOpt: Option[Array[Byte]]) = {
-    hashBytes(preOpt.getOrElse(Array()) ++ m.ups.foldRight(Array[Byte]())(_ ++ _))
+  protected def hashMigration(m: Migration, preOpt: Option[Seq[Byte]]) = {
+    hashBytes(preOpt.getOrElse(Seq()) ++ m.ups.foldRight(Seq[Byte]())(stringToBytes(_) ++ _))
   }
 
-  protected def hashMigrations(ms: Seq[Migration]): Seq[Array[Byte]] = ms.foldLeft[Seq[Array[Byte]]](Nil)((s, m) => s :+ hashMigration(m, s.headOption))
+  protected def hashMigrations(ms: Seq[Migration]): Seq[Seq[Byte]] = ms.foldLeft[Seq[Seq[Byte]]](Nil)((s, m) => s :+ hashMigration(m, s.headOption))
 }

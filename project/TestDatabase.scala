@@ -13,12 +13,12 @@ class TestDatabase extends Database {
       Right(this)
     }
 
-    def apply(script: Array[Byte]): Either[String, TestTransaction] = {
-      println("applying " + new String(script))
+    def apply(script: String): Either[String, TestTransaction] = {
+      println("applying " + script)
       Right(this)
     }
 
-    def addDowns(migName: String, downs: Seq[Array[Byte]]): Either[String, TestTransaction] = {
+    def addDowns(migName: String, downs: Seq[String]): Either[String, TestTransaction] = {
       db.downs = db.downs + (migName -> downs)
       Right(this)
     }
@@ -28,7 +28,7 @@ class TestDatabase extends Database {
 
   private var s: Seq[MigrationInfo] = Nil
 
-  private var downs: Map[String, Seq[Array[Byte]]] = Map()
+  private var downs: Map[String, Seq[String]] = Map()
 
   def state: Seq[MigrationInfo] = s
 
