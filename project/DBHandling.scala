@@ -30,7 +30,6 @@ trait DBHandling {
   protected def applyMigrationsImpl(db: Database, ms: Seq[Migration], s: TaskStreams): Unit = {
     val mhs = ms zip hashMigrations(ms)
     val lc = latestCommon(db.state, mhs)
-    println("latest common = " + lc.map(bytesToHex(_)))
     val actions = revertToLatestCommon(db, lc) ++ applyMigrations(mhs, lc)
     actions.foldLeft[Either[String, Transaction]](Right(db.transaction))((te, a) =>  te.right.flatMap(a(_)))
   }
