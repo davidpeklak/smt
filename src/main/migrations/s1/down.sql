@@ -1,1 +1,1 @@
-tschüss1
+DROP TABLE HALLO

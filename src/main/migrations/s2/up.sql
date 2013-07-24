@@ -1,1 +1,3 @@
-hallzo
+CREATE TABLE SERS (
+  BAR VARCHAR(20)
+)

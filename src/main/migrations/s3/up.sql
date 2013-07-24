@@ -1,1 +1,3 @@
-halloande
+CREATE TABLE HOI (
+  BAZ VARCHAR(30)
+)

@@ -1,1 +1,1 @@
-tschüss2
+DROP TABLE SERS

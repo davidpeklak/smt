@@ -1,1 +1,3 @@
-halluou
+CREATE TABLE HALLO (
+  FOO VARCHAR(10)
+)

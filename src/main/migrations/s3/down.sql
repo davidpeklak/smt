@@ -1,1 +1,1 @@
-tschüss3
+DROP TABLE HOI
