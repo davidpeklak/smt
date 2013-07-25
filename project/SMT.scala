@@ -2,20 +2,15 @@ import sbt._
 import sbt.Keys._
 import java.io.File
 
-object SMT extends Build with MigrationHandling with DBHandling {
+object SMT extends Plugin with MigrationHandling with DBHandling {
 
-  // lazy val testDb = database := new TestDatabase
-
-  lazy val smt = Project(id = "SMT",
-    base = new File("."),
-    settings = Project.defaultSettings ++ Seq(
-      migrationsSource <<= (sourceDirectory in Compile) / "migrations",
-      transformedMigrations <<= (migrations, transformations) map transformedMigrationsImpl,
-      showHashes <<= (transformedMigrations, streams) map showHashesImpl,
-      showDbState <<= (database, streams) map showDbStateImpl,
-      applyMigrations <<= (database, transformedMigrations, streams) map applyMigrationsImpl,
-      showLatestCommon <<= (database, transformedMigrations, streams) map showLatestCommonImpl
-    )
+  lazy val smtSettings = Seq(
+    migrationsSource <<= (sourceDirectory in Compile) / "migrations",
+    transformedMigrations <<= (migrations, transformations) map transformedMigrationsImpl,
+    showHashes <<= (transformedMigrations, streams) map showHashesImpl,
+    showDbState <<= (database, streams) map showDbStateImpl,
+    applyMigrations <<= (database, transformedMigrations, streams) map applyMigrationsImpl,
+    showLatestCommon <<= (database, transformedMigrations, streams) map showLatestCommonImpl
   )
 
   val migrationsSource = SettingKey[File]("migrations-source", "base-directory for migration files")
