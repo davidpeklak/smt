@@ -1,4 +1,4 @@
-import java.sql.{Connection => JConnection, Statement, ResultSet, DriverManager, SQLException}
+import java.sql.{Connection => JConnection, _}
 import java.util.Date
 import util.control.Exception.{Catcher, catching, allCatch}
 import Util._
@@ -14,10 +14,18 @@ class SqlDatabase(connectIdentifier: String, driverClass: Class[_]) extends Data
     catching(ca).andFinally(st.close())(f(st))
   }
 
+  def withPreparedStatement[U](c: JConnection, sql: String)(f: PreparedStatement => U, ca: Catcher[U] = empty[Throwable, U]) = {
+    val st = c.prepareStatement(sql)
+    catching(ca).andFinally(st.close())(f(st))
+  }
+
   val NAME = "NAME"
   val HASH = "HASH"
   val TIME = "TIME"
   val SEQ = "SEQU"
+  val MIGRATION = "MIRGATION"
+  val DOWN = "DOWN"
+  val SCRIPT = "SCRIP"
 
   val createMigrationTableStringOracle =
     """
@@ -69,16 +77,20 @@ class SqlDatabase(connectIdentifier: String, driverClass: Class[_]) extends Data
     "DELETE FROM MIRGATION WHERE HASH = '" + bytesToHex(hash) + "'"
   }
 
-  val tableExistsCatcher: Catcher[Unit] = {
-    case e: SQLException if e.getErrorCode == 42101 && e.getMessage.contains(("Table \"MIRGATION\" already exists")) => {
+  def insertDownString(hash: Seq[Byte], seq: Int) = "INSERT INTO DOWN VALUES ('" + bytesToHex(hash) + "', " + seq + ", ?)"
+
+  def queryDownString(hash: Seq[Byte]) = "SELECT * FROM DOWN WHERE HASH = '" + bytesToHex(hash) + "'"
+
+  def tableExistsCatcher(name: String): Catcher[Unit] = {
+    case e: SQLException if e.getErrorCode == 42101 && e.getMessage.contains(("Table \"" + name + "\" already exists")) => {
       ()
     }
   }
 
   lazy val connection = {
     val connection = DriverManager.getConnection(connectIdentifier)
-    withStatement(connection)(_.execute(createMigrationTableString), tableExistsCatcher)
-    withStatement(connection)(_.execute(createDownsTableString), tableExistsCatcher)
+    withStatement(connection)(_.execute(createMigrationTableString), tableExistsCatcher(MIGRATION))
+    withStatement(connection)(_.execute(createDownsTableString), tableExistsCatcher(DOWN))
     connection
   }
 
@@ -103,7 +115,21 @@ class SqlDatabase(connectIdentifier: String, driverClass: Class[_]) extends Data
       withStatement(connection)(_.execute(insertMigrationString(migrationInfo, mi)))
     }
 
-    def addDowns(migHash: Seq[Byte], downs: Seq[String]): Either[String, SqlTransaction] = exceptionToEither((println("addDowns")))
+    def addDowns(migHash: Seq[Byte], downs: Seq[String]): Either[String, SqlTransaction] = {
+      println("adding " + downs.size + " downs")
+      def addDown(i: Int, down: String) {
+        println("adding down: " + down.take(15) + "...")
+        val clob = connection.createClob()
+        clob.setString(1, down)
+        withPreparedStatement(connection, insertDownString(migHash, i))(st => {
+          st.setClob(1, clob)
+          st.executeUpdate()
+        })
+      }
+
+      downs.zipWithIndex.foreach(t => addDown(t._2, t._1))
+      Right(this)
+    }
 
     def remove(hash: Seq[Byte]): Either[String, SqlTransaction] = exceptionToEither({
       println("removing " + bytesToHex(hash))
@@ -113,7 +139,8 @@ class SqlDatabase(connectIdentifier: String, driverClass: Class[_]) extends Data
     def removeDowns(migHash: Seq[Byte]): Either[String, SqlTransaction] = exceptionToEither((println("removeDowns")))
 
     def apply(script: String): Either[String, SqlTransaction] = exceptionToEither({
-      println("applying script")
+      println("applying script: ")
+      println(script)
       withStatement(connection)(_.execute(script))
     })
 
@@ -137,7 +164,19 @@ class SqlDatabase(connectIdentifier: String, driverClass: Class[_]) extends Data
     case e: SQLException if e.getErrorCode == 2000 => Seq()
   })
 
-  def downs(hash: Seq[Byte]): Seq[String] = Seq()
+  def downs(hash: Seq[Byte]): Seq[String] = {
+    println("fetching downs for " + bytesToHex(hash))
+    withStatement(connection)(st => {
+      ResultSetIterator(st.executeQuery(queryDownString(hash))).map(rs => {
+        val seq = rs.getInt(SEQ)
+        val clob = rs.getClob(SCRIPT)
+        val down = clob.getSubString(1, clob.length().toInt)
+        (down, seq)
+      }).toSeq.sortBy(_._2).map(_._1)
+    }, {
+      case e: SQLException if e.getErrorCode == 2000 => Seq()
+    })
+  }
 
   def transaction: SqlTransaction = new SqlTransaction
 }
