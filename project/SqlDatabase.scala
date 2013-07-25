@@ -1,6 +1,6 @@
 import java.sql.{Connection => JConnection, _}
 import java.util.Date
-import util.control.Exception.{Catcher, catching, allCatch}
+import util.control.Exception.{Catcher, catching, allCatch, allCatcher}
 import Util._
 import collection.Map.empty
 
@@ -50,9 +50,11 @@ class SqlDatabase(connectIdentifier: String, driverClass: Class[_]) extends Data
   def queryDownString(hash: Seq[Byte]) = "SELECT * FROM " + DOWN + " WHERE HASH = '" + bytesToHex(hash) + "'"
 
   def tableExistsCatcher(name: String): Catcher[Unit] = {
-    case e: SQLException if e.getErrorCode == 42101 && e.getMessage.contains(("Table \"" + name + "\" already exists")) => {
-      ()
-    }
+    case e: SQLException if e.getErrorCode == 42101 && e.getMessage.contains(("Table \"" + name + "\" already exists")) => ()
+  }
+
+  def noDataCatcher[A]: Catcher[Seq[A]] = {
+    case e: SQLException if e.getErrorCode == 2000 => Seq()
   }
 
   lazy val connection = {
@@ -66,7 +68,13 @@ class SqlDatabase(connectIdentifier: String, driverClass: Class[_]) extends Data
     type T = SqlTransaction
     type DB = SqlDatabase
 
-    private def exceptionToEither(block: => Unit): Either[String, SqlTransaction] = allCatch.either(block).left.map(_.getMessage).right.map(_ => this)
+    private def exceptionToEither(block: => Unit): Either[String, SqlTransaction] = {
+      val catcher = allCatcher[Unit] andThen ( _ => {
+        connection.rollback()
+        connection.setAutoCommit(true)
+      })
+      catching(catcher).either(block).left.map(_.getMessage).right.map(_ => this)
+    }
 
     def add(migrationInfo: MigrationInfo): Either[String, SqlTransaction] = exceptionToEither {
       val mm = withStatement(connection)(st => {
@@ -115,7 +123,11 @@ class SqlDatabase(connectIdentifier: String, driverClass: Class[_]) extends Data
       withStatement(connection)(_.execute(script))
     }
 
-    def commit: SqlDatabase = sqlDatabase
+    def commit: SqlDatabase = {
+      connection.commit()
+      connection.setAutoCommit(true)
+      sqlDatabase
+    }
   }
 
   type T = SqlTransaction
@@ -130,9 +142,7 @@ class SqlDatabase(connectIdentifier: String, driverClass: Class[_]) extends Data
         rs.getLong(INDEX)
         )
     }).toSeq.sortBy(_._2).map(_._1)
-  }, {
-    case e: SQLException if e.getErrorCode == 2000 => Seq()
-  })
+  }, noDataCatcher)
 
   def downs(hash: Seq[Byte]): Seq[String] = {
     withStatement(connection)(st => {
@@ -142,10 +152,11 @@ class SqlDatabase(connectIdentifier: String, driverClass: Class[_]) extends Data
         val down = clob.getSubString(1, clob.length().toInt)
         (down, index)
       }).toSeq.sortBy(_._2).map(_._1)
-    }, {
-      case e: SQLException if e.getErrorCode == 2000 => Seq()
-    })
+    }, noDataCatcher)
   }
 
-  def transaction: SqlTransaction = new SqlTransaction
+  def transaction: SqlTransaction = {
+    connection.setAutoCommit(false)
+    new SqlTransaction
+  }
 }
