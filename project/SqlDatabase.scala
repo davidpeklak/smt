@@ -7,8 +7,6 @@ import collection.Map.empty
 class SqlDatabase(connectIdentifier: String, driverClass: Class[_]) extends Database {
   sqlDatabase =>
 
-  def ??? = throw new Exception("Not implemented")
-
   def withStatement[U](c: JConnection)(f: Statement => U, ca: Catcher[U] = empty[Throwable, U]) = {
     val st = c.createStatement()
     catching(ca).andFinally(st.close())(f(st))
@@ -22,64 +20,34 @@ class SqlDatabase(connectIdentifier: String, driverClass: Class[_]) extends Data
   val NAME = "NAME"
   val HASH = "HASH"
   val TIME = "TIME"
-  val SEQ = "SEQU"
-  val MIGRATION = "MIRGATION"
+  val INDEX = "INDX"
+  val MIGRATION = "MIGRATION"
   val DOWN = "DOWN"
   val SCRIPT = "SCRIP"
 
-  val createMigrationTableStringOracle =
-    """
-    BEGIN
-      EXECUTE IMMEDIATE '
-        CREATE TABLE MIRGATION (
-          SEQU NUMBER(10),
-          NAME VARCHAR(128),
-          HASH VARCHAR(40),
-          TIME NUMBER(15)
-        )';
-      EXCEPTION
-        WHEN OTHERS THEN
-          IF SQLCODE = -955 THEN NULL;
-          ELSE RAISE;
-          END IF;
-      END;
-    """
+  val createMigrationTableString = "CREATE TABLE " + MIGRATION + "( " + INDEX + " NUMBER(10), " + NAME + " VARCHAR(128), " +
+    HASH + " VARCHAR(40), " + TIME + " NUMBER(15) )"
 
-  val createMigrationTableString =
-    """
-        CREATE TABLE MIRGATION (
-          SEQU NUMBER(10),
-          NAME VARCHAR(128),
-          HASH VARCHAR(40),
-          TIME NUMBER(15)
-        )
-    """
+  val createDownsTableString = "CREATE TABLE " + DOWN + "( " + HASH + " VARCHAR(40), " + INDEX + " NUMBER(10), " +
+    SCRIPT + " CLOB )"
 
-  val createDownsTableString =
-    """
-        CREATE TABLE DOWN (
-          HASH VARCHAR(40),
-          SEQU NUMBER(10),
-          SCRIP CLOB
-        )
-    """
+  val queryMigrationTableString = "SELECT * FROM " + MIGRATION
 
-  val queryMigrationTableString =
-    """
-    SELECT * FROM MIRGATION
-    """
-
-  def insertMigrationString(mi: MigrationInfo, seq: Long): String = {
-    "INSERT INTO MIRGATION VALUES ( " + seq + ", '" + mi.name + "', '" + bytesToHex(mi.hash) + "', " + mi.dateTime.getTime + " )"
+  def insertMigrationString(mi: MigrationInfo, index: Long): String = {
+    "INSERT INTO " + MIGRATION + " VALUES ( " + index + ", '" + mi.name + "', '" + bytesToHex(mi.hash) + "', " + mi.dateTime.getTime + " )"
   }
 
   def removeMigrationString(hash: Seq[Byte]): String = {
-    "DELETE FROM MIRGATION WHERE HASH = '" + bytesToHex(hash) + "'"
+    "DELETE FROM " + MIGRATION + " WHERE HASH = '" + bytesToHex(hash) + "'"
   }
 
-  def insertDownString(hash: Seq[Byte], seq: Int) = "INSERT INTO DOWN VALUES ('" + bytesToHex(hash) + "', " + seq + ", ?)"
+  def removeDownsString(hash: Seq[Byte]): String = {
+    "DELETE FROM " + DOWN + " WHERE HASH = '" + bytesToHex(hash) + "'"
+  }
 
-  def queryDownString(hash: Seq[Byte]) = "SELECT * FROM DOWN WHERE HASH = '" + bytesToHex(hash) + "'"
+  def insertDownString(hash: Seq[Byte], index: Int) = "INSERT INTO " + DOWN + " VALUES ('" + bytesToHex(hash) + "', " + index + ", ?)"
+
+  def queryDownString(hash: Seq[Byte]) = "SELECT * FROM " + DOWN + " WHERE HASH = '" + bytesToHex(hash) + "'"
 
   def tableExistsCatcher(name: String): Catcher[Unit] = {
     case e: SQLException if e.getErrorCode == 42101 && e.getMessage.contains(("Table \"" + name + "\" already exists")) => {
@@ -103,7 +71,7 @@ class SqlDatabase(connectIdentifier: String, driverClass: Class[_]) extends Data
     def add(migrationInfo: MigrationInfo): Either[String, SqlTransaction] = exceptionToEither {
       val mm = withStatement(connection)(st => {
         ResultSetIterator(st.executeQuery(queryMigrationTableString)).map(rs => {
-          rs.getLong(SEQ)
+          rs.getLong(INDEX)
         }).toSeq.sorted.headOption
       }, {
         case e: SQLException => None
@@ -115,10 +83,11 @@ class SqlDatabase(connectIdentifier: String, driverClass: Class[_]) extends Data
       withStatement(connection)(_.execute(insertMigrationString(migrationInfo, mi)))
     }
 
-    def addDowns(migHash: Seq[Byte], downs: Seq[String]): Either[String, SqlTransaction] = {
+    def addDowns(migHash: Seq[Byte], downs: Seq[String]): Either[String, SqlTransaction] = exceptionToEither {
       println("adding " + downs.size + " downs")
       def addDown(i: Int, down: String) {
-        println("adding down: " + down.take(15) + "...")
+        println("adding down: ")
+        println(down)
         val clob = connection.createClob()
         clob.setString(1, down)
         withPreparedStatement(connection, insertDownString(migHash, i))(st => {
@@ -128,21 +97,23 @@ class SqlDatabase(connectIdentifier: String, driverClass: Class[_]) extends Data
       }
 
       downs.zipWithIndex.foreach(t => addDown(t._2, t._1))
-      Right(this)
     }
 
-    def remove(hash: Seq[Byte]): Either[String, SqlTransaction] = exceptionToEither({
+    def remove(hash: Seq[Byte]): Either[String, SqlTransaction] = exceptionToEither {
       println("removing " + bytesToHex(hash))
       withStatement(connection)(_.execute(removeMigrationString(hash)))
-    })
+    }
 
-    def removeDowns(migHash: Seq[Byte]): Either[String, SqlTransaction] = exceptionToEither((println("removeDowns")))
+    def removeDowns(migHash: Seq[Byte]): Either[String, SqlTransaction] = exceptionToEither {
+      println("removing downs for " + bytesToHex(migHash))
+      withStatement(connection)(_.execute(removeDownsString(migHash)))
+    }
 
-    def apply(script: String): Either[String, SqlTransaction] = exceptionToEither({
+    def apply(script: String): Either[String, SqlTransaction] = exceptionToEither {
       println("applying script: ")
       println(script)
       withStatement(connection)(_.execute(script))
-    })
+    }
 
     def commit: SqlDatabase = sqlDatabase
   }
@@ -150,14 +121,13 @@ class SqlDatabase(connectIdentifier: String, driverClass: Class[_]) extends Data
   type T = SqlTransaction
 
   def state: Seq[MigrationInfo] = withStatement(connection)(st => {
-    println("state")
     ResultSetIterator(st.executeQuery(queryMigrationTableString)).map(rs => {
       (MigrationInfo(
         name = rs.getString(NAME),
         hash = hexToBytes(rs.getString(HASH)),
         dateTime = new Date(rs.getLong(TIME))
       ),
-        rs.getLong(SEQ)
+        rs.getLong(INDEX)
         )
     }).toSeq.sortBy(_._2).map(_._1)
   }, {
@@ -165,13 +135,12 @@ class SqlDatabase(connectIdentifier: String, driverClass: Class[_]) extends Data
   })
 
   def downs(hash: Seq[Byte]): Seq[String] = {
-    println("fetching downs for " + bytesToHex(hash))
     withStatement(connection)(st => {
       ResultSetIterator(st.executeQuery(queryDownString(hash))).map(rs => {
-        val seq = rs.getInt(SEQ)
+        val index = rs.getInt(INDEX)
         val clob = rs.getClob(SCRIPT)
         val down = clob.getSubString(1, clob.length().toInt)
-        (down, seq)
+        (down, index)
       }).toSeq.sortBy(_._2).map(_._1)
     }, {
       case e: SQLException if e.getErrorCode == 2000 => Seq()
@@ -179,15 +148,4 @@ class SqlDatabase(connectIdentifier: String, driverClass: Class[_]) extends Data
   }
 
   def transaction: SqlTransaction = new SqlTransaction
-}
-
-object ResultSetIterator {
-  def apply(rs: ResultSet): Iterator[ResultSet] = new Iterator[ResultSet] {
-    def hasNext: Boolean = !rs.isLast
-
-    def next(): ResultSet = {
-      rs.next()
-      rs
-    }
-  }
 }
