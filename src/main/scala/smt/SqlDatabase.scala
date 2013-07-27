@@ -6,8 +6,12 @@ import util.control.Exception.{Catcher, catching, allCatcher}
 import Util._
 import collection.Map.empty
 
-class SqlDatabase(connection: => JConnection) extends Database {
+abstract class SqlDatabase(connection: => JConnection) extends Database {
   sqlDatabase =>
+
+  def tableExistsCatcher(name: String): Catcher[Unit]
+
+  def noDataCatcher[A]: Catcher[Seq[A]]
 
   def withStatement[U](c: JConnection)(f: Statement => U, ca: Catcher[U] = empty[Throwable, U]) = {
     val st = c.createStatement()
@@ -50,17 +54,6 @@ class SqlDatabase(connection: => JConnection) extends Database {
   def insertDownString(hash: Seq[Byte], index: Int) = "INSERT INTO " + DOWN + " VALUES ('" + bytesToHex(hash) + "', " + index + ", ?)"
 
   def queryDownString(hash: Seq[Byte]) = "SELECT * FROM " + DOWN + " WHERE HASH = '" + bytesToHex(hash) + "'"
-
-  def tableExistsCatcher(name: String): Catcher[Unit] = {
-    case e: SQLException if e.getErrorCode == 955 => {
-      println("Ignoring SqlExecption " + e.getErrorCode + ", " + e.getMessage)
-    }
-    // case e: SQLException if e.getErrorCode == 42101 && e.getMessage.contains(("Table \"" + name + "\" already exists")) => ()
-  }
-
-  def noDataCatcher[A]: Catcher[Seq[A]] = empty /*{
-    case e: SQLException if e.getErrorCode == 2000 => Seq()
-  }*/
 
   lazy val cnx = {
     val cnx = connection
