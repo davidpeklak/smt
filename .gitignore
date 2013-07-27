@@ -2,5 +2,5 @@
 .idea_modules/
 target/
 project/target/
-.DS_Store
+*/.DS_Store
 
