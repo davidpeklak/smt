@@ -2,6 +2,7 @@ package smt
 
 import java.sql.ResultSet
 import scala.io.Codec
+import collection.immutable.Stream.Empty
 
 object Util {
   def bytesToHex(bs: Seq[Byte]): String = bs.map("%02x" format _).mkString("")
@@ -12,12 +13,11 @@ object Util {
 
   def bytesToString(bs: Seq[Byte]): String = new String(bs.toArray)
 
-  def ResultSetIterator(rs: ResultSet): Iterator[ResultSet] = new Iterator[ResultSet] {
-    def hasNext: Boolean = !rs.isLast
-
-    def next(): ResultSet = {
-      rs.next()
-      rs
+  def mapResultSet[A](rs: ResultSet)(f: ResultSet => A): Stream[A] = {
+    if (rs.next) {
+      val a = f(rs)
+      a #:: mapResultSet(rs)(f)
     }
+    else Empty
   }
 }

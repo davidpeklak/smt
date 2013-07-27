@@ -2,11 +2,11 @@ package smt
 
 import java.sql.{Connection => JConnection, _}
 import java.util.Date
-import util.control.Exception.{Catcher, catching, allCatch, allCatcher}
+import util.control.Exception.{Catcher, catching, allCatcher}
 import Util._
 import collection.Map.empty
 
-class SqlDatabase(connectIdentifier: String, driverClass: Class[_]) extends Database {
+class SqlDatabase(connection: => JConnection) extends Database {
   sqlDatabase =>
 
   def withStatement[U](c: JConnection)(f: Statement => U, ca: Catcher[U] = empty[Throwable, U]) = {
@@ -52,18 +52,21 @@ class SqlDatabase(connectIdentifier: String, driverClass: Class[_]) extends Data
   def queryDownString(hash: Seq[Byte]) = "SELECT * FROM " + DOWN + " WHERE HASH = '" + bytesToHex(hash) + "'"
 
   def tableExistsCatcher(name: String): Catcher[Unit] = {
-    case e: SQLException if e.getErrorCode == 42101 && e.getMessage.contains(("Table \"" + name + "\" already exists")) => ()
+    case e: SQLException if e.getErrorCode == 955 => {
+      println("Ignoring SqlExecption " + e.getErrorCode + ", " + e.getMessage)
+    }
+    // case e: SQLException if e.getErrorCode == 42101 && e.getMessage.contains(("Table \"" + name + "\" already exists")) => ()
   }
 
-  def noDataCatcher[A]: Catcher[Seq[A]] = {
+  def noDataCatcher[A]: Catcher[Seq[A]] = empty /*{
     case e: SQLException if e.getErrorCode == 2000 => Seq()
-  }
+  }*/
 
-  lazy val connection = {
-    val connection = DriverManager.getConnection(connectIdentifier)
-    withStatement(connection)(_.execute(createMigrationTableString), tableExistsCatcher(MIGRATION))
-    withStatement(connection)(_.execute(createDownsTableString), tableExistsCatcher(DOWN))
-    connection
+  lazy val cnx = {
+    val cnx = connection
+    withStatement(cnx)(_.execute(createMigrationTableString), tableExistsCatcher(MIGRATION))
+    withStatement(cnx)(_.execute(createDownsTableString), tableExistsCatcher(DOWN))
+    cnx
   }
 
   class SqlTransaction extends Transaction {
@@ -72,15 +75,15 @@ class SqlDatabase(connectIdentifier: String, driverClass: Class[_]) extends Data
 
     private def exceptionToEither(block: => Unit): Either[String, SqlTransaction] = {
       val catcher = allCatcher[Unit] andThen ( _ => {
-        connection.rollback()
-        connection.setAutoCommit(true)
+        cnx.rollback()
+        cnx.setAutoCommit(true)
       })
       catching(catcher).either(block).left.map(_.getMessage).right.map(_ => this)
     }
 
     def add(migrationInfo: MigrationInfo): Either[String, SqlTransaction] = exceptionToEither {
-      val mm = withStatement(connection)(st => {
-        ResultSetIterator(st.executeQuery(queryMigrationTableString)).map(rs => {
+      val mm = withStatement(cnx)(st => {
+        mapResultSet(st.executeQuery(queryMigrationTableString))(rs => {
           rs.getLong(INDEX)
         }).toSeq.sorted.headOption
       }, {
@@ -90,7 +93,7 @@ class SqlDatabase(connectIdentifier: String, driverClass: Class[_]) extends Data
       val mi = mm.getOrElse(0L) + 1L
       println("adding migration " + mi + ", " + migrationInfo)
 
-      withStatement(connection)(_.execute(insertMigrationString(migrationInfo, mi)))
+      withStatement(cnx)(_.execute(insertMigrationString(migrationInfo, mi)))
     }
 
     def addDowns(migHash: Seq[Byte], downs: Seq[String]): Either[String, SqlTransaction] = exceptionToEither {
@@ -98,9 +101,9 @@ class SqlDatabase(connectIdentifier: String, driverClass: Class[_]) extends Data
       def addDown(i: Int, down: String) {
         println("adding down: ")
         println(down)
-        val clob = connection.createClob()
+        val clob = cnx.createClob()
         clob.setString(1, down)
-        withPreparedStatement(connection, insertDownString(migHash, i))(st => {
+        withPreparedStatement(cnx, insertDownString(migHash, i))(st => {
           st.setClob(1, clob)
           st.executeUpdate()
         })
@@ -111,31 +114,31 @@ class SqlDatabase(connectIdentifier: String, driverClass: Class[_]) extends Data
 
     def remove(hash: Seq[Byte]): Either[String, SqlTransaction] = exceptionToEither {
       println("removing " + bytesToHex(hash))
-      withStatement(connection)(_.execute(removeMigrationString(hash)))
+      withStatement(cnx)(_.execute(removeMigrationString(hash)))
     }
 
     def removeDowns(migHash: Seq[Byte]): Either[String, SqlTransaction] = exceptionToEither {
       println("removing downs for " + bytesToHex(migHash))
-      withStatement(connection)(_.execute(removeDownsString(migHash)))
+      withStatement(cnx)(_.execute(removeDownsString(migHash)))
     }
 
     def apply(script: String): Either[String, SqlTransaction] = exceptionToEither {
       println("applying script: ")
       println(script)
-      withStatement(connection)(_.execute(script))
+      withStatement(cnx)(_.execute(script))
     }
 
     def commit: SqlDatabase = {
-      connection.commit()
-      connection.setAutoCommit(true)
+      cnx.commit()
+      cnx.setAutoCommit(true)
       sqlDatabase
     }
   }
 
   type T = SqlTransaction
 
-  def state: Seq[MigrationInfo] = withStatement(connection)(st => {
-    ResultSetIterator(st.executeQuery(queryMigrationTableString)).map(rs => {
+  def state: Seq[MigrationInfo] = withStatement(cnx)(st => {
+    mapResultSet(st.executeQuery(queryMigrationTableString))(rs => {
       (MigrationInfo(
         name = rs.getString(NAME),
         hash = hexToBytes(rs.getString(HASH)),
@@ -147,8 +150,8 @@ class SqlDatabase(connectIdentifier: String, driverClass: Class[_]) extends Data
   }, noDataCatcher)
 
   def downs(hash: Seq[Byte]): Seq[String] = {
-    withStatement(connection)(st => {
-      ResultSetIterator(st.executeQuery(queryDownString(hash))).map(rs => {
+    withStatement(cnx)(st => {
+      mapResultSet(st.executeQuery(queryDownString(hash)))(rs => {
         val index = rs.getInt(INDEX)
         val clob = rs.getClob(SCRIPT)
         val down = clob.getSubString(1, clob.length().toInt)
@@ -158,7 +161,7 @@ class SqlDatabase(connectIdentifier: String, driverClass: Class[_]) extends Data
   }
 
   def transaction: SqlTransaction = {
-    connection.setAutoCommit(false)
+    cnx.setAutoCommit(false)
     new SqlTransaction
   }
 }
