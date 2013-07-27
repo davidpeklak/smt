@@ -1,3 +1,5 @@
+package smt
+
 import java.io.File
 import sbt._
 import Util._

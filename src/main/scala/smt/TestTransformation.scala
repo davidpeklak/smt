@@ -1,3 +1,5 @@
+package smt
+
 class TestTransformation extends Transformation {
   def transform(s: String): String = {
     s.map(c => {

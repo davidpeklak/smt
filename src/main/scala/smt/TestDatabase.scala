@@ -1,3 +1,5 @@
+package smt
+
 import Util._
 
 class TestDatabase extends Database {

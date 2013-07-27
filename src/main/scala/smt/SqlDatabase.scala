@@ -1,3 +1,5 @@
+package smt
+
 import java.sql.{Connection => JConnection, _}
 import java.util.Date
 import util.control.Exception.{Catcher, catching, allCatch, allCatcher}

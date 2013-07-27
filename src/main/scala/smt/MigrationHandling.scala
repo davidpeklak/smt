@@ -1,3 +1,5 @@
+package smt
+
 import sbt.Keys._
 import java.security.MessageDigest
 import Util._

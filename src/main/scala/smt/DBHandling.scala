@@ -1,3 +1,5 @@
+package smt
+
 import sbt._
 import sbt.Keys._
 import java.util.Date

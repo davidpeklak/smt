@@ -1,3 +1,5 @@
+package smt
+
 import java.util.Date
 import Util._
 

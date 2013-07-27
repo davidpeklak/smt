@@ -1,3 +1,5 @@
+package smt
+
 import java.sql.ResultSet
 import scala.io.Codec
 

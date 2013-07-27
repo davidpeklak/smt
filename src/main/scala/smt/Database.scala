@@ -1,3 +1,4 @@
+package smt
 
 trait Transaction {
 
