@@ -3,7 +3,7 @@ package smt
 import sbt._
 import sbt.Keys._
 import java.util.Date
-import Util._
+import smt.Util._
 
 trait DBHandling {
   this: MigrationHandling =>

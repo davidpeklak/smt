@@ -5,9 +5,11 @@ import java.security.MessageDigest
 import Util._
 
 trait MigrationHandling {
+  type Transformation = String => String
+
   protected def transformedMigrationsImpl(ms: Seq[Migration], ts: Seq[Transformation]): Seq[Migration] = {
     def transformScripts(ss: Seq[String]): Seq[String] = ss.map(s => {
-      ts.foldLeft(s)((s, t) => t.transform(s))
+      ts.foldLeft(s)((s, t) => t(s))
     })
     ms.map(m => m.copy(ups = transformScripts(m.ups), downs = transformScripts(m.downs)))
   }
