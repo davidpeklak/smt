@@ -6,8 +6,11 @@ import java.io.File
 
 object SMT extends Plugin with MigrationHandling with DBHandling {
 
+  lazy val globalSmtSettings = Seq(
+    migrationsSource <<= (sourceDirectory in Compile) / "migrations"
+  )
+
   lazy val smtSettings = Seq(
-    migrationsSource <<= (sourceDirectory in Compile) / "migrations",
     transformedMigrations <<= (migrations, transformations) map transformedMigrationsImpl,
     showHashes <<= (transformedMigrations, streams) map showHashesImpl,
     showDbState <<= (database, streams) map showDbStateImpl,
@@ -25,7 +28,7 @@ object SMT extends Plugin with MigrationHandling with DBHandling {
 
   val showHashes = TaskKey[Unit]("show-hashes", "show the hash sums of the migrations")
 
-  val database = SettingKey[Database]("database", "implementation of the database abstraction")
+  val database = SettingKey[Database]("database", "implementation of db abstraction")
 
   val showDbState = TaskKey[Unit]("show-db-state", "show the state of the db")
 
