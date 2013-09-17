@@ -16,10 +16,18 @@ trait DBHandling {
 
   protected def showLatestCommonImpl(db: Database, ms: Seq[Migration], s: TaskStreams): Unit = {
     val lc = latestCommon(db.state, ms zip hashMigrations(ms))
-    s.log.info(lc.map(bytesToHex).getOrElse("None"))
+    s.log.info(lc.map(_.toString).getOrElse("None"))
   }
 
-  private def latestCommon(mis: Seq[MigrationInfo], ms: Seq[(Migration, Seq[Byte])]): Option[Seq[Byte]] = latestCommonGen(mis, ms)(_.hash)(_._2)
+  case class Common(db: MigrationInfo, currentName: String) {
+    override def toString: String = {
+      "CommonMigrationInfo(" + currentName + " (on db: " + db.name + "), " + bytesToHex(db.hash) + ", " + db.dateTime + ")"
+    }
+  }
+
+  private def latestCommon(mis: Seq[MigrationInfo], ms: Seq[(Migration, Seq[Byte])]): Option[Common] = {
+    (mis zip ms).takeWhile{case (MigrationInfo(_, hi, _), (_, h)) => hi == h}.lastOption.map{case (mi, (m, _)) => Common(mi, m.name)}
+  }
 
   private def latestCommonGen[A, B](as: Seq[A], bs: Seq[B])(f: A => Seq[Byte])(g: B => Seq[Byte]): Option[Seq[Byte]] = {
     val ahs = as.map(a => (a, f(a)))
@@ -31,7 +39,7 @@ trait DBHandling {
 
   protected def applyMigrationsImpl(db: Database, ms: Seq[Migration], s: TaskStreams): Unit = {
     val mhs = ms zip hashMigrations(ms)
-    val lc = latestCommon(db.state, mhs)
+    val lc = latestCommon(db.state, mhs).map(_.db.hash)
     val actions = revertToLatestCommon(db, lc) ++ applyMigrations(mhs, lc)
     actions.foldLeft[Either[String, Transaction]](Right(db.transaction))((te, a) =>  te.right.flatMap(a(_))).right.map(_.commit).left.foreach(println(_))
   }

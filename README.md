@@ -5,7 +5,7 @@ Smt is ideally used by teams or single developers who use scala and sbt on the a
 some-one with a bit of sbt familiarity at hand.
 
 ## Why smt?
-Smt is simple to use (especially if you are familiar with sbt), and is simple in its implementation, so it can easily be enhanced with your own developments. The code is strictly separated into two parts: a core part than can be easily reused
+Smt is simple to use (especially if you are familiar with sbt), and is simple in its implementation. so it can easily be enhanced with your own developments. The code is strictly separated into two parts: a core part than can be easily reused
 as a library, and a wrapping part that makes the whole thing an sbt-plugin.
 
 ## Getting started
