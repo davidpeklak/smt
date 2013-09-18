@@ -78,7 +78,7 @@ abstract class SqlDatabase(connection: => JConnection) extends Database {
       val mm = withStatement(cnx)(st => {
         mapResultSet(st.executeQuery(queryMigrationTableString))(rs => {
           rs.getLong(INDEX)
-        }).toSeq.sorted.headOption
+        }).toSeq.sorted(Ordering[Long].reverse).headOption
       }, {
         case e: SQLException => None
       })
