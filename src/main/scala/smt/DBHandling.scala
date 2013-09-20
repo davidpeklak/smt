@@ -6,7 +6,7 @@ import java.util.Date
 import smt.Util._
 
 trait DBHandling {
-  this: MigrationHandling =>
+  import MigrationHandling._
 
   protected def now: Date = new Date
 

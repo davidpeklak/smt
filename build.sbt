@@ -15,7 +15,9 @@ publishTo := {
 }
 
 libraryDependencies ++= Seq(
-  "com.h2database" % "h2" % "1.3.172"
+  "com.h2database" % "h2" % "1.3.172",
+  "org.scalacheck" %% "scalacheck" % "1.10.1" % "test",
+  "org.scalatest" %% "scalatest" % "1.9.2" % "test"
 )
 
 scalaVersion := "2.9.2"

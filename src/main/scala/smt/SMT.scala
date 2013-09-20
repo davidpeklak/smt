@@ -4,7 +4,9 @@ import sbt._
 import sbt.Keys._
 import java.io.File
 
-object SMT extends Plugin with MigrationHandling with DBHandling {
+object SMT extends Plugin with DBHandling {
+  import MigrationHandling._
+
 
   lazy val globalSmtSettings = Seq(
     migrationsSource <<= (sourceDirectory in Compile) / "migrations"
