@@ -8,8 +8,8 @@ object MigrationHandling {
   type Transformation = String => String
 
   def transformedMigrationsImpl(ms: Seq[Migration], ts: Seq[Transformation]): Seq[Migration] = {
-    def transformScripts(ss: Seq[String]): Seq[String] = ss.map(s => {
-      ts.foldLeft(s)((s, t) => t(s))
+    def transformScripts(ss: Seq[Script]): Seq[Script] = ss.map(s => {
+      ts.foldLeft(s)((s, t) => s.copy(content = t(s.content)))
     })
     ms.map(m => m.copy(ups = transformScripts(m.ups), downs = transformScripts(m.downs)))
   }
@@ -23,7 +23,7 @@ object MigrationHandling {
   def hashBytes(bs: Seq[Byte]): Seq[Byte] = md.digest(bs.toArray).toSeq
 
   private def hashMigration(m: Migration, preOpt: Option[Seq[Byte]]) = {
-    hashBytes(preOpt.getOrElse(Seq()) ++ m.ups.foldRight(Seq[Byte]())(stringToBytes(_) ++ _))
+    hashBytes(preOpt.getOrElse(Seq()) ++ m.ups.map(_.content).foldRight(Seq[Byte]())(stringToBytes(_) ++ _))
   }
 
   def hashMigrations(ms: Seq[Migration]): Seq[Seq[Byte]] = ms.foldLeft[Seq[Seq[Byte]]](Nil)((s, m) => s :+ hashMigration(m, s.lastOption))

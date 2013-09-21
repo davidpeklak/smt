@@ -52,17 +52,19 @@ object SchemaMigration {
       else None
     }
 
-    def upsAndDowns(dir: File): Seq[(File, File)] = {
+    def script(file: File): Script = Script(name = file.getName, content = bytesToString(IO.readBytes(file)))
+
+    def upsAndDowns(dir: File): Seq[(Script, Script)] = {
       val up = dir / "up"
       IO.assertDirectory(up)
-      val ups = up.listFiles
+      val ups = up.listFiles.map(script)
 
       val down = dir / "down"
       IO.assertDirectory(down)
-      val downs = down.listFiles
+      val downs = down.listFiles.map(script)
 
-      val upNames = ups.map(_.getName).toSeq
-      val downNames = downs.map(_.getName).toSeq
+      val upNames = ups.map(_.name).toSeq
+      val downNames = downs.map(_.name).toSeq
       if (upNames != downNames) {
         println("ups and downs differ in " + dir.getCanonicalPath)
         println("ups:   " + upNames.mkString(", "))
@@ -84,6 +86,6 @@ object SchemaMigration {
 
     val (ups, downs) = ud.unzip
 
-    Migration(name = name, ups = ups.map(up => bytesToString(IO.readBytes(up))), downs = downs.map(down => bytesToString(IO.readBytes(down))))
+    Migration(name = name, ups = ups, downs = downs)
   }
 }

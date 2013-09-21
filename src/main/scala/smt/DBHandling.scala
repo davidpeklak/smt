@@ -44,7 +44,7 @@ trait DBHandling {
     actions.foldLeft[Either[String, Transaction]](Right(db.transaction))((te, a) =>  te.right.flatMap(a(_))).right.map(_.commit).left.foreach(s => throw new Exception(s))
   }
 
-  private case class MigrationInfoWithDowns(mi: MigrationInfo, downs: Seq[String])
+  private case class MigrationInfoWithDowns(mi: MigrationInfo, downs: Seq[Script])
 
   private def revertToLatestCommon(db: Database, latestCommon: Option[Seq[Byte]]): Seq[DbAction] = {
     val mis = db.state.reverse.takeWhile(mi => !latestCommon.exists(_ == mi.hash))

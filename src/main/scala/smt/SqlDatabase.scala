@@ -89,13 +89,12 @@ abstract class SqlDatabase(connection: => JConnection) extends Database {
       withStatement(cnx)(_.execute(insertMigrationString(migrationInfo, mi)))
     }
 
-    def addDowns(migHash: Seq[Byte], downs: Seq[String]): Either[String, SqlTransaction] = exceptionToEither {
+    def addDowns(migHash: Seq[Byte], downs: Seq[Script]): Either[String, SqlTransaction] = exceptionToEither {
       println("adding " + downs.size + " downs")
-      def addDown(i: Int, down: String) {
-        println("adding down: ")
-        println(down)
+      def addDown(i: Int, down: Script) {
+        println("adding down: " + down)
         val clob = cnx.createClob()
-        clob.setString(1, down)
+        clob.setString(1, down.content)
         withPreparedStatement(cnx, insertDownString(migHash, i))(st => {
           st.setClob(1, clob)
           st.executeUpdate()
@@ -115,10 +114,9 @@ abstract class SqlDatabase(connection: => JConnection) extends Database {
       withStatement(cnx)(_.execute(removeDownsString(migHash)))
     }
 
-    def apply(script: String): Either[String, SqlTransaction] = exceptionToEither {
-      println("applying script: ")
-      println(script)
-      withStatement(cnx)(_.execute(script))
+    def apply(script: Script): Either[String, SqlTransaction] = exceptionToEither {
+      println("applying script: " + script)
+      withStatement(cnx)(_.execute(script.content))
     }
 
     def commit: SqlDatabase = {
@@ -142,12 +140,12 @@ abstract class SqlDatabase(connection: => JConnection) extends Database {
     }).toSeq.sortBy(_._2).map(_._1)
   }, noDataCatcher)
 
-  def downs(hash: Seq[Byte]): Seq[String] = {
+  def downs(hash: Seq[Byte]): Seq[Script] = {
     withStatement(cnx)(st => {
       mapResultSet(st.executeQuery(queryDownString(hash)))(rs => {
         val index = rs.getInt(INDEX)
         val clob = rs.getClob(SCRIPT)
-        val down = clob.getSubString(1, clob.length().toInt)
+        val down = Script(name = index.toString, content = clob.getSubString(1, clob.length().toInt))
         (down, index)
       }).toSeq.sortBy(_._2).map(_._1)
     }, noDataCatcher)

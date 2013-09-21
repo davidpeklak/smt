@@ -17,7 +17,7 @@ class TestDatabase extends Database {
       Right(this)
     }
 
-    def addDowns(migHash: Seq[Byte], downs: Seq[String]): Either[String, TestTransaction] = {
+    def addDowns(migHash: Seq[Byte], downs: Seq[Script]): Either[String, TestTransaction] = {
       println("adding " + downs)
       db.ds = db.ds + (migHash -> downs)
       Right(this)
@@ -35,7 +35,7 @@ class TestDatabase extends Database {
       Right(this)
     }
 
-    def apply(script: String): Either[String, TestTransaction] = {
+    def apply(script: Script): Either[String, TestTransaction] = {
       println("applying " + script)
       Right(this)
     }
@@ -45,11 +45,11 @@ class TestDatabase extends Database {
 
   private var s: Seq[MigrationInfo] = Nil
 
-  private var ds: Map[Seq[Byte], Seq[String]] = Map()
+  private var ds: Map[Seq[Byte], Seq[Script]] = Map()
 
   def state: Seq[MigrationInfo] = s
 
-  def downs(hash: Seq[Byte]): Seq[String] = ds(hash)
+  def downs(hash: Seq[Byte]): Seq[Script] = ds(hash)
 
   def transaction: T = new TestTransaction
 }
