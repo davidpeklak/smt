@@ -41,7 +41,7 @@ trait DBHandling {
     val mhs = ms zip hashMigrations(ms)
     val lc = latestCommon(db.state, mhs).map(_.db.hash)
     val actions = revertToLatestCommon(db, lc) ++ applyMigrations(mhs, lc)
-    actions.foldLeft[Either[String, Transaction]](Right(db.transaction))((te, a) =>  te.right.flatMap(a(_))).right.map(_.commit).left.foreach(println(_))
+    actions.foldLeft[Either[String, Transaction]](Right(db.transaction))((te, a) =>  te.right.flatMap(a(_))).right.map(_.commit).left.foreach(s => throw new Exception(s))
   }
 
   private case class MigrationInfoWithDowns(mi: MigrationInfo, downs: Seq[String])
