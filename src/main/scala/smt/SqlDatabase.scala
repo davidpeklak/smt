@@ -62,71 +62,59 @@ abstract class SqlDatabase(connection: => JConnection) extends Database {
     cnx
   }
 
-  class SqlTransaction extends Transaction {
-    type T = SqlTransaction
-    type DB = SqlDatabase
 
-    private def exceptionToEither(block: => Unit): Either[String, SqlTransaction] = {
-      val catcher = allCatcher[Unit] andThen ( _ => {
-        cnx.rollback()
-        cnx.setAutoCommit(true)
-      })
-      catching(catcher).either(block).left.map(_.getMessage).right.map(_ => this)
-    }
-
-    def add(migrationInfo: MigrationInfo): Either[String, SqlTransaction] = exceptionToEither {
-      val mm = withStatement(cnx)(st => {
-        mapResultSet(st.executeQuery(queryMigrationTableString))(rs => {
-          rs.getLong(INDEX)
-        }).toSeq.sorted(Ordering[Long].reverse).headOption
-      }, {
-        case e: SQLException => None
-      })
-
-      val mi = mm.getOrElse(0L) + 1L
-      println("adding migration " + mi + ", " + migrationInfo)
-
-      withStatement(cnx)(_.execute(insertMigrationString(migrationInfo, mi)))
-    }
-
-    def addDowns(migHash: Seq[Byte], downs: Seq[Script]): Either[String, SqlTransaction] = exceptionToEither {
-      println("adding " + downs.size + " downs")
-      def addDown(i: Int, down: Script) {
-        println("adding down: " + down)
-        val clob = cnx.createClob()
-        clob.setString(1, down.content)
-        withPreparedStatement(cnx, insertDownString(migHash, i))(st => {
-          st.setClob(1, clob)
-          st.executeUpdate()
-        })
-      }
-
-      downs.zipWithIndex.foreach(t => addDown(t._2, t._1))
-    }
-
-    def remove(hash: Seq[Byte]): Either[String, SqlTransaction] = exceptionToEither {
-      println("removing " + bytesToHex(hash))
-      withStatement(cnx)(_.execute(removeMigrationString(hash)))
-    }
-
-    def removeDowns(migHash: Seq[Byte]): Either[String, SqlTransaction] = exceptionToEither {
-      println("removing downs for " + bytesToHex(migHash))
-      withStatement(cnx)(_.execute(removeDownsString(migHash)))
-    }
-
-    def apply(script: Script): Either[String, SqlTransaction] = exceptionToEither {
-      println("applying script: " + script)
-      withStatement(cnx)(_.execute(script.content))
-    }
-
-    def commit: SqlDatabase = {
-      cnx.commit()
+  private def exceptionToEither(block: => Unit): Either[String, SqlDatabase] = {
+    val catcher = allCatcher[Unit] andThen (_ => {
+      cnx.rollback()
       cnx.setAutoCommit(true)
-      sqlDatabase
-    }
+    })
+    catching(catcher).either(block).left.map(_.getMessage).right.map(_ => this)
   }
 
-  type T = SqlTransaction
+  def add(migrationInfo: MigrationInfo): Either[String, SqlDatabase] = exceptionToEither {
+    val mm = withStatement(cnx)(st => {
+      mapResultSet(st.executeQuery(queryMigrationTableString))(rs => {
+        rs.getLong(INDEX)
+      }).toSeq.sorted(Ordering[Long].reverse).headOption
+    }, {
+      case e: SQLException => None
+    })
+
+    val mi = mm.getOrElse(0L) + 1L
+    println("adding migration " + mi + ", " + migrationInfo)
+
+    withStatement(cnx)(_.execute(insertMigrationString(migrationInfo, mi)))
+  }
+
+  def addDowns(migHash: Seq[Byte], downs: Seq[Script]): Either[String, SqlDatabase] = exceptionToEither {
+    println("adding " + downs.size + " downs")
+    def addDown(i: Int, down: Script) {
+      println("adding down: " + down)
+      val clob = cnx.createClob()
+      clob.setString(1, down.content)
+      withPreparedStatement(cnx, insertDownString(migHash, i))(st => {
+        st.setClob(1, clob)
+        st.executeUpdate()
+      })
+    }
+
+    downs.zipWithIndex.foreach(t => addDown(t._2, t._1))
+  }
+
+  def remove(hash: Seq[Byte]): Either[String, SqlDatabase] = exceptionToEither {
+    println("removing " + bytesToHex(hash))
+    withStatement(cnx)(_.execute(removeMigrationString(hash)))
+  }
+
+  def removeDowns(migHash: Seq[Byte]): Either[String, SqlDatabase] = exceptionToEither {
+    println("removing downs for " + bytesToHex(migHash))
+    withStatement(cnx)(_.execute(removeDownsString(migHash)))
+  }
+
+  def apply(script: Script): Either[String, SqlDatabase] = exceptionToEither {
+    println("applying script: " + script)
+    withStatement(cnx)(_.execute(script.content))
+  }
 
   def state: Seq[MigrationInfo] = withStatement(cnx)(st => {
     mapResultSet(st.executeQuery(queryMigrationTableString))(rs => {
@@ -149,10 +137,5 @@ abstract class SqlDatabase(connection: => JConnection) extends Database {
         (down, index)
       }).toSeq.sortBy(_._2).map(_._1)
     }, noDataCatcher)
-  }
-
-  def transaction: SqlTransaction = {
-    cnx.setAutoCommit(false)
-    new SqlTransaction
   }
 }

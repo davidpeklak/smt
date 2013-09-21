@@ -35,13 +35,13 @@ trait DBHandling {
     (ahs zip bhs).takeWhile(ahbh => (ahbh._1._2 == ahbh._2._2)).lastOption.map(_._1._2)
   }
 
-  private type DbAction = Transaction => Either[String, Transaction]
+  private type DbAction = Database => Either[String, Database]
 
   protected def applyMigrationsImpl(db: Database, ms: Seq[Migration], s: TaskStreams): Unit = {
     val mhs = ms zip hashMigrations(ms)
     val lc = latestCommon(db.state, mhs).map(_.db.hash)
     val actions = revertToLatestCommon(db, lc) ++ applyMigrations(mhs, lc)
-    actions.foldLeft[Either[String, Transaction]](Right(db.transaction))((te, a) =>  te.right.flatMap(a(_))).right.map(_.commit).left.foreach(s => throw new Exception(s))
+    actions.foldLeft[Either[String, Database]](Right(db))((db, a) =>  db.right.flatMap(a(_))).left.foreach(s => throw new Exception(s))
   }
 
   private case class MigrationInfoWithDowns(mi: MigrationInfo, downs: Seq[Script])
@@ -49,13 +49,13 @@ trait DBHandling {
   private def revertToLatestCommon(db: Database, latestCommon: Option[Seq[Byte]]): Seq[DbAction] = {
     val mis = db.state.reverse.takeWhile(mi => !latestCommon.exists(_ == mi.hash))
     val mids = mis.map(mi => MigrationInfoWithDowns(mi, db.downs(mi.hash)))
-    mids.flatMap(revertMigration(_))
+    mids.flatMap(revertMigration)
   }
 
   private def revertMigration(mid: MigrationInfoWithDowns): Seq[DbAction] = {
-    mid.downs.reverse.map(down => (t: Transaction) => t.apply(down)) :+
-      ((t: Transaction) => t.removeDowns(mid.mi.hash)) :+
-      ((t: Transaction) => t.remove(mid.mi.hash))
+    mid.downs.reverse.map(down => (t: Database) => t.apply(down)) :+
+      ((t: Database) => t.removeDowns(mid.mi.hash)) :+
+      ((t: Database) => t.remove(mid.mi.hash))
   }
 
   private def applyMigrations(mhs: Seq[(Migration, Seq[Byte])], latestCommon: Option[Seq[Byte]]): Seq[DbAction] = {
@@ -65,8 +65,8 @@ trait DBHandling {
 
   private def applyMigration(m: Migration, hash: Seq[Byte]): Seq[DbAction] = {
     val mi = MigrationInfo(name = m.name, hash = hash, dateTime = now)
-    ((t: Transaction) => t.add(mi)) +:
-      ((t: Transaction) => t.addDowns(hash, m.downs)) +:
-      m.ups.map(up => (t: Transaction) => t.apply(up))
+    ((t: Database) => t.add(mi)) +:
+      ((t: Database) => t.addDowns(hash, m.downs)) +:
+      m.ups.map(up => (t: Database) => t.apply(up))
   }
 }
