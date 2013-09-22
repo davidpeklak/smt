@@ -2,17 +2,19 @@ package smt
 
 trait Database {
 
-  def state: Seq[MigrationInfo]
+  type Failure = String
 
-  def downs(hash: Seq[Byte]): Seq[Script]
+  def state: Either[Failure, Seq[MigrationInfo]]
 
-  def add(migrationInfo: MigrationInfo): Either[String, Database]
+  def downs(hash: Seq[Byte]): Either[Failure, Seq[Script]]
 
-  def addDowns(migHash: Seq[Byte], downs: Seq[Script]): Either[String, Database]
+  def add(migrationInfo: MigrationInfo): (Option[Failure], Database)
 
-  def remove(hash: Seq[Byte]): Either[String, Database]
+  def addDowns(migHash: Seq[Byte], downs: Seq[Script]): (Option[Failure], Database)
 
-  def removeDowns(migHash: Seq[Byte]): Either[String, Database]
+  def remove(hash: Seq[Byte]): (Option[Failure], Database)
 
-  def apply(script: Script): Either[String, Database]
+  def removeDowns(migHash: Seq[Byte]): (Option[Failure], Database)
+
+  def applyScript(script: Script): (Option[Failure], Database)
 }

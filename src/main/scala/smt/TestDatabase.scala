@@ -4,33 +4,33 @@ import Util._
 
 class TestDatabase extends Database {
 
-    def add(migrationInfo: MigrationInfo): Either[String, TestDatabase]  = {
+    def add(migrationInfo: MigrationInfo): (Option[Failure], Database)  = {
       println("adding " + migrationInfo)
       s =  s :+ migrationInfo
-      Right(this)
+      (None, this)
     }
 
-    def addDowns(migHash: Seq[Byte], downs: Seq[Script]): Either[String, TestDatabase] = {
+    def addDowns(migHash: Seq[Byte], downs: Seq[Script]): (Option[Failure], Database) = {
       println("adding " + downs)
       ds = ds + (migHash -> downs)
-      Right(this)
+      (None, this)
     }
 
-    def remove(hash: Seq[Byte]): Either[String, TestDatabase] = {
+    def remove(hash: Seq[Byte]): (Option[Failure], Database) = {
       println("removing " + bytesToHex(hash))
       s = s.filterNot(_.hash == hash)
-      Right(this)
+      (None, this)
     }
 
-    def removeDowns(migHash: Seq[Byte]): Either[String, TestDatabase] = {
+    def removeDowns(migHash: Seq[Byte]): (Option[Failure], Database) = {
       println("removing downs" + bytesToHex(migHash))
       ds = ds - migHash
-      Right(this)
+      (None, this)
     }
 
-    def apply(script: Script): Either[String, TestDatabase] = {
+    def applyScript(script: Script): (Option[Failure], Database) = {
       println("applying " + script)
-      Right(this)
+      (None, this)
     }
 
 
@@ -38,7 +38,7 @@ class TestDatabase extends Database {
 
   private var ds: Map[Seq[Byte], Seq[Script]] = Map()
 
-  def state: Seq[MigrationInfo] = s
+  def state: Either[Failure, Seq[MigrationInfo]] = Right(s)
 
-  def downs(hash: Seq[Byte]): Seq[Script] = ds(hash)
+  def downs(hash: Seq[Byte]): Either[Failure, Seq[Script]] = Right(ds(hash))
 }

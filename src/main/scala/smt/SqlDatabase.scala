@@ -13,7 +13,15 @@ abstract class SqlDatabase(connection: => JConnection) extends Database {
 
   def noDataCatcher[A]: Catcher[Seq[A]]
 
-  def withStatement[U](c: JConnection)(f: Statement => U, ca: Catcher[U] = empty[Throwable, U]) = {
+  private def exceptionToFailure[A](block: => A): Either[Failure, A] = {
+    catching(allCatcher[A]).either(block).left.map(_.toString)
+  }
+
+  private def effectExceptionToFailure(block: => Unit): (Option[Failure], Database) = {
+    (exceptionToFailure(block).left.toOption, this)
+  }
+
+  def withStatement[U](c: JConnection)(f: Statement => U, ca: Catcher[U] = empty[Throwable, U]): U = {
     val st = c.createStatement()
     catching(ca).andFinally(st.close())(f(st))
   }
@@ -62,16 +70,7 @@ abstract class SqlDatabase(connection: => JConnection) extends Database {
     cnx
   }
 
-
-  private def exceptionToEither(block: => Unit): Either[String, SqlDatabase] = {
-    val catcher = allCatcher[Unit] andThen (_ => {
-      cnx.rollback()
-      cnx.setAutoCommit(true)
-    })
-    catching(catcher).either(block).left.map(_.getMessage).right.map(_ => this)
-  }
-
-  def add(migrationInfo: MigrationInfo): Either[String, SqlDatabase] = exceptionToEither {
+  def add(migrationInfo: MigrationInfo): (Option[Failure], Database) = effectExceptionToFailure {
     val mm = withStatement(cnx)(st => {
       mapResultSet(st.executeQuery(queryMigrationTableString))(rs => {
         rs.getLong(INDEX)
@@ -86,7 +85,7 @@ abstract class SqlDatabase(connection: => JConnection) extends Database {
     withStatement(cnx)(_.execute(insertMigrationString(migrationInfo, mi)))
   }
 
-  def addDowns(migHash: Seq[Byte], downs: Seq[Script]): Either[String, SqlDatabase] = exceptionToEither {
+  def addDowns(migHash: Seq[Byte], downs: Seq[Script]): (Option[Failure], Database) = effectExceptionToFailure {
     println("adding " + downs.size + " downs")
     def addDown(i: Int, down: Script) {
       println("adding down: " + down)
@@ -101,22 +100,22 @@ abstract class SqlDatabase(connection: => JConnection) extends Database {
     downs.zipWithIndex.foreach(t => addDown(t._2, t._1))
   }
 
-  def remove(hash: Seq[Byte]): Either[String, SqlDatabase] = exceptionToEither {
+  def remove(hash: Seq[Byte]): (Option[Failure], Database) = effectExceptionToFailure {
     println("removing " + bytesToHex(hash))
     withStatement(cnx)(_.execute(removeMigrationString(hash)))
   }
 
-  def removeDowns(migHash: Seq[Byte]): Either[String, SqlDatabase] = exceptionToEither {
+  def removeDowns(migHash: Seq[Byte]): (Option[Failure], Database) = effectExceptionToFailure {
     println("removing downs for " + bytesToHex(migHash))
     withStatement(cnx)(_.execute(removeDownsString(migHash)))
   }
 
-  def apply(script: Script): Either[String, SqlDatabase] = exceptionToEither {
+  def applyScript(script: Script): (Option[Failure], Database) = effectExceptionToFailure {
     println("applying script: " + script)
     withStatement(cnx)(_.execute(script.content))
   }
 
-  def state: Seq[MigrationInfo] = withStatement(cnx)(st => {
+  def state: Either[Failure, Seq[MigrationInfo]] = exceptionToFailure(withStatement(cnx)(st => {
     mapResultSet(st.executeQuery(queryMigrationTableString))(rs => {
       (MigrationInfo(
         name = rs.getString(NAME),
@@ -126,16 +125,14 @@ abstract class SqlDatabase(connection: => JConnection) extends Database {
         rs.getLong(INDEX)
         )
     }).toSeq.sortBy(_._2).map(_._1)
-  }, noDataCatcher)
+  }, noDataCatcher))
 
-  def downs(hash: Seq[Byte]): Seq[Script] = {
-    withStatement(cnx)(st => {
-      mapResultSet(st.executeQuery(queryDownString(hash)))(rs => {
-        val index = rs.getInt(INDEX)
-        val clob = rs.getClob(SCRIPT)
-        val down = Script(name = index.toString, content = clob.getSubString(1, clob.length().toInt))
-        (down, index)
-      }).toSeq.sortBy(_._2).map(_._1)
-    }, noDataCatcher)
-  }
+  def downs(hash: Seq[Byte]): Either[Failure, Seq[Script]] = exceptionToFailure(withStatement(cnx)(st => {
+    mapResultSet(st.executeQuery(queryDownString(hash)))(rs => {
+      val index = rs.getInt(INDEX)
+      val clob = rs.getClob(SCRIPT)
+      val down = Script(name = index.toString, content = clob.getSubString(1, clob.length().toInt))
+      (down, index)
+    }).toSeq.sortBy(_._2).map(_._1)
+  }, noDataCatcher))
 }
