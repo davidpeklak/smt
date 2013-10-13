@@ -6,7 +6,7 @@ import java.util.Date
 import smt.Util._
 import DbAction._
 
-trait DbHandling {
+trait DBHandling {
 
   import MigrationHandling._
 

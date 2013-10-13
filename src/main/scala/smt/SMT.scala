@@ -4,7 +4,7 @@ import sbt._
 import sbt.Keys._
 import java.io.File
 
-object SMT extends Plugin with DbHandling {
+object SMT extends Plugin with DBHandling {
   import MigrationHandling._
 
 

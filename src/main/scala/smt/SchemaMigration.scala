@@ -7,6 +7,13 @@ import smt.Util._
 /**
  * Assumes the following directory structure:
  * + dir
+ * | + table
+ * | | + down
+ * | | | table1down.sql
+ * | | | table2down.sql
+ * | | + up
+ * | | | table1up.sql
+ * | | | table2up.sql
  * | + function
  * | | + down
  * | | | function1down.sql
@@ -35,6 +42,13 @@ import smt.Util._
  * | | + up
  * | | | view1up.sql
  * | | | view2up.sql
+ * | + other
+ * | | + down
+ * | | | other1down.sql
+ * | | | other2down.sql
+ * | | + up
+ * | | | other1up.sql
+ * | | | other2up.sql
  */
 object SchemaMigration {
   def apply(name: String, dir: File): Migration = {
@@ -75,7 +89,7 @@ object SchemaMigration {
       ups zip downs
     }
 
-    val subdirNames = Seq("function", "package", "procedure", "view")
+    val subdirNames = Seq("table", "function", "package", "procedure", "view", "other")
 
     val ud =
       for (dir <- dirs;
