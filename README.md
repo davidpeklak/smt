@@ -38,9 +38,12 @@ You apply migratiobs to a database instance with the `apply-migrations` task. He
 2. Roll back all migrations that succeed the latest common migation on the database instance
 3. Apply all migrations that succeed the latest common migration in your current sequence of migrations
 
+You can also move the database instance to a specific migration with the `migrate-to` task. This task takes one argument: the name of the migration you want to move to.
+
 ## Environments
 Typically, you will not deal with only one database instance, but you will want to apply your migrations to, say, one or more dev-instances, a uat-instance, and eventually a prod-instance.
 
-You can use sbt configurations to model your different environments. The [smt-usage](https://github.com/davidpeklak/smt-usage) project shows you how to do that. 
+You can use sbt configurations to model your different environments. The [smt-usage](https://github.com/davidpeklak/smt-usage) project shows you how to do that.
+ 
 ## Transformations
 The scripts that you want to apply to your different environments are hopefully (almost) identical, but sometimes, tiny little pieces will have to be environment-specific. To make that possible, smt lets you define transformations that will be applied to your scripts before they get applied to your database instance. You do so by assigning a value of type `Seq[smt.MigrationHandling#Transformation]` to the sbt setting `transformations`, where `smt.MigrationHandling#Transformation` is simply a type alias for `String => String` and means 'script in - transformed script out'. Typically, a transformation will just replace some place-holder in your scripts with some concrete name. Since you want that name to be different in different environments, you will want to define your `transformations` sbt-configuration specific. This whole paragraph will make sense to you once you checket out how the `transformations` are defined in the [smt-usage](https://github.com/davidpeklak/smt-usage) project. One more thng: hashes are calculated *after* transformations have been applied, so be careful when you change the transformations in your prod environment.

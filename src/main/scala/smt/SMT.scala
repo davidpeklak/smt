@@ -5,6 +5,7 @@ import sbt.Keys._
 import java.io.File
 
 object SMT extends Plugin with DBHandling {
+
   import MigrationHandling._
 
 
@@ -17,6 +18,7 @@ object SMT extends Plugin with DBHandling {
     showHashes <<= (transformedMigrations, streams) map showHashesImpl,
     showDbState <<= (database, streams) map showDbStateImpl,
     applyMigrations <<= (database, transformedMigrations, streams) map applyMigrationsImpl,
+    migrateTo <<= inputTask((argTask: TaskKey[Seq[String]]) => (argTask, SMT.database, SMT.transformedMigrations, streams) map migrateToImpl),
     showLatestCommon <<= (database, transformedMigrations, streams) map showLatestCommonImpl
   )
 
@@ -37,4 +39,20 @@ object SMT extends Plugin with DBHandling {
   val showLatestCommon = TaskKey[Unit]("show-latest-common", "show the latest common migration")
 
   val applyMigrations = TaskKey[Unit]("apply-migrations", "apply the migrations to the DB")
+
+  val migrateTo = InputKey[Unit]("migrate-to", "move db to the specified migration")
+
+  private def migrateToImpl(args: Seq[String], db: Database, ms: Seq[Migration], s: TaskStreams) {
+    args match {
+      case Seq(target) => {
+        val mst = ms.reverse.dropWhile(_.name != target).reverse
+        if (mst.isEmpty) throw new Exception("No migration named '" + target + "' defined")
+        else {
+          SMT.applyMigrationsImpl(db, mst, s)
+        }
+      }
+      case Seq() => throw new Exception("Name of a migration expected.")
+      case _ => throw new Exception("Too many arguments. Name of a migration expected.")
+    }
+  }
 }
