@@ -48,12 +48,12 @@ trait DBHandling {
     DbAction.state.map(s => latestCommon(s, mhs))
   }
 
-  protected def applyMigrationsImpl(db: Database, ms: Seq[Migration], s: TaskStreams): Unit = {
+  protected def applyMigrationsImpl(db: Database, ms: Seq[Migration], arb: Boolean, s: TaskStreams): Unit = {
     val mhs = ms zip hashMigrations(ms)
 
     val action =
       for (lcho <- latestCommon(mhs).map(_.map(_.db.hash));
-           _ <- revertToLatestCommon(lcho);
+           _ <- revertToLatestCommon(lcho, arb);
            _ <- applyMigrations(mhs, lcho))
       yield ()
 
@@ -63,10 +63,13 @@ trait DBHandling {
 
   private case class MigrationInfoWithDowns(mi: MigrationInfo, downs: Seq[Script])
 
-  private def revertToLatestCommon(latestCommon: Option[Seq[Byte]]): DbAction[Unit] = {
+  private def revertToLatestCommon(latestCommon: Option[Seq[Byte]], arb: Boolean): DbAction[Unit] = {
     for (mis <- migrationsToRevert(latestCommon);
          mids <- sequence(mis.map(enrichMigrationWithDowns));
-         _ <- sequence(mids.map(revertMigration)))
+         _ <- {
+           if (mids.isEmpty  || arb) sequence(mids.map(revertMigration))
+           else failure("Will not roll back migrations " + mids.map(_.mi.name).mkString(", ") + ", because allow-rollback is set to false")
+         })
     yield ()
 
   }

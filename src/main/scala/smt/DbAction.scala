@@ -25,6 +25,8 @@ object DbAction {
 
   def unit[A](a: => A) = DbAction(StateAction.unit(Right(a)))
 
+  def failure(f: => String) = DbAction(StateAction.unit(Left(f)))
+
   def sequence[S, A](fs: Seq[DbAction[A]]): DbAction[Seq[A]] =
     fs.foldRight(unit[Seq[A]](Nil))((f, acc) => f.map2(acc)(_ +: _))
 

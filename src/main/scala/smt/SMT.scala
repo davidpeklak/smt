@@ -10,21 +10,24 @@ object SMT extends Plugin with DBHandling {
 
 
   lazy val globalSmtSettings = Seq(
-    migrationsSource <<= (sourceDirectory in Compile) / "migrations"
+    migrationsSource <<= (sourceDirectory in Compile) / "migrations",
+    allowRollback := false
   )
 
   lazy val smtSettings = Seq(
     transformedMigrations <<= (migrations, transformations) map transformedMigrationsImpl,
     showHashes <<= (transformedMigrations, streams) map showHashesImpl,
     showDbState <<= (database, streams) map showDbStateImpl,
-    applyMigrations <<= (database, transformedMigrations, streams) map applyMigrationsImpl,
-    migrateTo <<= inputTask((argTask: TaskKey[Seq[String]]) => (argTask, SMT.database, SMT.transformedMigrations, streams) map migrateToImpl),
+    applyMigrations <<= (database, transformedMigrations, allowRollback, streams) map applyMigrationsImpl,
+    migrateTo <<= inputTask((argTask: TaskKey[Seq[String]]) => (argTask, database, transformedMigrations, allowRollback, streams) map migrateToImpl),
     showLatestCommon <<= (database, transformedMigrations, streams) map showLatestCommonImpl
   )
 
   val migrationsSource = SettingKey[File]("migrations-source", "base-directory for migration files")
 
   val migrations = TaskKey[Seq[Migration]]("migrations", "sequence of migrations")
+
+  val allowRollback = SettingKey[Boolean]("allow-rollback", "indicates if migrations can be rolled back")
 
   val transformedMigrations = TaskKey[Seq[Migration]]("transformed-migrations", "transformed migrations")
 
@@ -42,13 +45,13 @@ object SMT extends Plugin with DBHandling {
 
   val migrateTo = InputKey[Unit]("migrate-to", "move db to the specified migration")
 
-  private def migrateToImpl(args: Seq[String], db: Database, ms: Seq[Migration], s: TaskStreams) {
+  private def migrateToImpl(args: Seq[String], db: Database, ms: Seq[Migration], arb: Boolean, s: TaskStreams) {
     args match {
       case Seq(target) => {
         val mst = ms.reverse.dropWhile(_.name != target).reverse
         if (mst.isEmpty) throw new Exception("No migration named '" + target + "' defined")
         else {
-          SMT.applyMigrationsImpl(db, mst, s)
+          SMT.applyMigrationsImpl(db, mst, arb, s)
         }
       }
       case Seq() => throw new Exception("Name of a migration expected.")
