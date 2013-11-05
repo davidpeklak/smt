@@ -52,6 +52,6 @@ object DbAction {
 
   def removeDowns(migHash: Seq[Byte]): DbAction[Unit] = modify(_.removeDowns(migHash))
 
-  def applyScript(script: Script): DbAction[Unit] = modify(_.applyScript(script))
+  def applyScript(script: Script, direction: Direction): DbAction[Unit] = modify(_.applyScript(script, direction: Direction))
 }
 

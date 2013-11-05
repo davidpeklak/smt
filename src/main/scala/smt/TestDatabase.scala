@@ -28,8 +28,8 @@ class TestDatabase extends Database {
       (None, this)
     }
 
-    def applyScript(script: Script): (Option[Failure], Database) = {
-      println("applying " + script)
+    def applyScript(script: Script, direction: Direction): (Option[Failure], Database) = {
+      println("applying " + direction + " " + script)
       (None, this)
     }
 

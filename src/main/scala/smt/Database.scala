@@ -16,5 +16,5 @@ trait Database {
 
   def removeDowns(migHash: Seq[Byte]): (Option[Failure], Database)
 
-  def applyScript(script: Script): (Option[Failure], Database)
+  def applyScript(script: Script, direction: Direction): (Option[Failure], Database)
 }

@@ -81,13 +81,13 @@ trait DBHandling {
 
   private def revertMigration(mid: MigrationInfoWithDowns): DbAction[Unit] = {
     sequence(Seq(
-      applyScripts(mid.downs.reverse),
+      applyScripts(mid.downs.reverse, Down),
       removeDowns(mid.mi.hash),
       remove(mid.mi.hash)
     )).map(_ => ())
   }
 
-  private def applyScripts(ss: Seq[Script]): DbAction[Unit] = sequence(ss.map(applyScript)).map(_ => ())
+  private def applyScripts(ss: Seq[Script], direction: Direction): DbAction[Unit] = sequence(ss.map(applyScript(_, direction))).map(_ => ())
 
   private def applyMigrations(mhs: Seq[(Migration, Seq[Byte])], latestCommon: Option[Seq[Byte]]): DbAction[Unit] = {
     sequence(migrationsToApply(mhs, latestCommon).map {
@@ -103,7 +103,7 @@ trait DBHandling {
     val mi = MigrationInfo(name = m.name, hash = hash, dateTime = now)
     for (_ <- add(mi);
          _ <- addDowns(hash, m.downs);
-         _ <- sequence(m.ups.map(applyScript)))
+         _ <- sequence(m.ups.map(applyScript(_, Up))))
     yield ()
   }
 }

@@ -43,7 +43,7 @@ abstract class SqlDatabase(connection: => JConnection) extends Database {
     HASH + " VARCHAR(40), " + TIME + " NUMBER(15) )"
 
   val createDownsTableString = "CREATE TABLE " + DOWN + "( " + HASH + " VARCHAR(40), " + INDEX + " NUMBER(10), " +
-    SCRIPT + " CLOB )"
+    SCRIPT + " CLOB, " + NAME + " VARCHAR(128) )"
 
   val queryMigrationTableString = "SELECT * FROM " + MIGRATION
 
@@ -59,7 +59,7 @@ abstract class SqlDatabase(connection: => JConnection) extends Database {
     "DELETE FROM " + DOWN + " WHERE HASH = '" + bytesToHex(hash) + "'"
   }
 
-  def insertDownString(hash: Seq[Byte], index: Int) = "INSERT INTO " + DOWN + " VALUES ('" + bytesToHex(hash) + "', " + index + ", ?)"
+  def insertDownString(name: String, hash: Seq[Byte], index: Int) = "INSERT INTO " + DOWN + " VALUES ('"+  bytesToHex(hash) + "', " + index + ", ?, '" + name + "')"
 
   def queryDownString(hash: Seq[Byte]) = "SELECT * FROM " + DOWN + " WHERE HASH = '" + bytesToHex(hash) + "'"
 
@@ -91,7 +91,7 @@ abstract class SqlDatabase(connection: => JConnection) extends Database {
       println("adding down: " + down)
       val clob = cnx.createClob()
       clob.setString(1, down.content)
-      withPreparedStatement(cnx, insertDownString(migHash, i))(st => {
+      withPreparedStatement(cnx, insertDownString(down.name, migHash, i))(st => {
         st.setClob(1, clob)
         st.executeUpdate()
       })
@@ -110,8 +110,8 @@ abstract class SqlDatabase(connection: => JConnection) extends Database {
     withStatement(cnx)(_.execute(removeDownsString(migHash)))
   }
 
-  def applyScript(script: Script): (Option[Failure], Database) = effectExceptionToFailure {
-    println("applying script: " + script)
+  def applyScript(script: Script, direction: Direction): (Option[Failure], Database) = effectExceptionToFailure {
+    println("applying " + direction + " script: " + script)
     withStatement(cnx)(_.execute(script.content))
   }
 
@@ -130,8 +130,9 @@ abstract class SqlDatabase(connection: => JConnection) extends Database {
   def downs(hash: Seq[Byte]): Either[Failure, Seq[Script]] = exceptionToFailure(withStatement(cnx)(st => {
     mapResultSet(st.executeQuery(queryDownString(hash)))(rs => {
       val index = rs.getInt(INDEX)
+      val name = Option(rs.getString(NAME)).getOrElse(index.toString)
       val clob = rs.getClob(SCRIPT)
-      val down = Script(name = index.toString, content = clob.getSubString(1, clob.length().toInt))
+      val down = Script(name = name, content = clob.getSubString(1, clob.length().toInt))
       (down, index)
     }).toSeq.sortBy(_._2).map(_._1)
   }, noDataCatcher))
