@@ -1,8 +1,7 @@
 package smt
 
-import java.io.File
 import sbt._
-import smt.Util._
+import ScriptParsers._
 
 /**
  * Assumes the following directory structure:
@@ -52,10 +51,14 @@ import smt.Util._
  */
 object SchemaMigration {
   def apply(name: String, dir: File): Migration = {
-    apply(name, Seq(dir))
+    apply(name, Seq(dir), OneFileOneScriptParser)
   }
 
   def apply(name: String, dirs: Seq[File]): Migration = {
+    apply(name, dirs, OneFileOneScriptParser)
+  }
+
+  def apply(name: String, dirs: Seq[File], scriptParser: File => Seq[Script]): Migration = {
     IO.assertDirectories(dirs: _*)
 
     def checkDirectory(file: File): Option[File] = {
@@ -66,27 +69,27 @@ object SchemaMigration {
       else None
     }
 
-    def script(file: File): Script = Script(name = file.getName, content = bytesToString(IO.readBytes(file)))
-
-    def upsAndDowns(dir: File): Seq[(Script, Script)] = {
+    def upsAndDowns(dir: File): (Seq[Script], Seq[Script]) = {
       val up = dir / "up"
       IO.assertDirectory(up)
-      val ups = up.listFiles.map(script)
+      val upFiles = up.listFiles.toSeq
+      val upFileNames = upFiles.map(_.getName)
+      val ups = upFiles.flatMap(scriptParser)
 
       val down = dir / "down"
       IO.assertDirectory(down)
-      val downs = down.listFiles.map(script)
+      val downFiles = down.listFiles.toSeq
+      val downFileNames = downFiles.map(_.getName)
+      val downs = downFiles.flatMap(scriptParser)
 
-      val upNames = ups.map(_.name).toSeq
-      val downNames = downs.map(_.name).toSeq
-      if (upNames != downNames) {
+      if (upFileNames != downFileNames) {
         println("ups and downs differ in " + dir.getCanonicalPath)
-        println("ups:   " + upNames.mkString(", "))
-        println("downs: " + downNames.mkString(", "))
+        println("ups:   " + upFileNames.mkString(", "))
+        println("downs: " + downFileNames.mkString(", "))
       }
-      assert(upNames == downNames)
+      assert(upFileNames == downFileNames)
 
-      ups zip downs
+      (ups, downs)
     }
 
     val subdirNames = Seq("table", "function", "package", "procedure", "view", "other")
@@ -94,12 +97,23 @@ object SchemaMigration {
     val ud =
       for (dir <- dirs;
            subdirname <- subdirNames;
-           subdir <- checkDirectory(dir / subdirname).toSeq;
-           (up, down) <- upsAndDowns(subdir)
-      ) yield (up, down)
+           subdir <- checkDirectory(dir / subdirname).toSeq
+      ) yield upsAndDowns(subdir)
 
-    val (ups, downs) = ud.unzip
+    val (upss, downss) = ud.unzip
+    val (ups, downs) = (upss.flatten, downss.flatten)
 
     Migration(name = name, ups = ups, downs = downs)
   }
 }
+
+object SepSchemaMigration {
+  def apply(sep: String, name: String, dir: File): Migration = {
+    SchemaMigration(name, Seq(dir), OneFileManyScriptsParser("\n" + sep))
+  }
+
+  def apply(sep: String, name: String, dirs: Seq[File]): Migration = {
+    SchemaMigration(name, dirs, OneFileManyScriptsParser("\n" + sep))
+  }
+}
+
