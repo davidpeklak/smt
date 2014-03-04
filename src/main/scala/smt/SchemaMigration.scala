@@ -69,18 +69,16 @@ object SchemaMigration {
       else None
     }
 
-    def upsAndDowns(dir: File): (Seq[Script], Seq[Script]) = {
+    def upsAndDowns(dir: File): Seq[Group] = {
       val up = dir / "up"
       IO.assertDirectory(up)
       val upFiles = up.listFiles.toSeq
       val upFileNames = upFiles.map(_.getName)
-      val ups = upFiles.flatMap(scriptParser)
 
       val down = dir / "down"
       IO.assertDirectory(down)
       val downFiles = down.listFiles.toSeq
       val downFileNames = downFiles.map(_.getName)
-      val downs = downFiles.flatMap(f => scriptParser(f).reverse)
 
       if (upFileNames != downFileNames) {
         println("ups and downs differ in " + dir.getCanonicalPath)
@@ -89,21 +87,25 @@ object SchemaMigration {
       }
       assert(upFileNames == downFileNames)
 
-      (ups, downs)
+      val upDownFiles = upFiles zip downFiles
+      val groups = upDownFiles.map {
+        case (upFile, downFile) => Group(ups = scriptParser(upFile), downs = scriptParser(downFile).reverse)
+      }
+
+      groups
     }
 
     val subdirNames = Seq("table", "function", "package", "procedure", "view", "other")
 
-    val ud =
-      for (dir <- dirs;
-           subdirname <- subdirNames;
-           subdir <- checkDirectory(dir / subdirname).toSeq
-      ) yield upsAndDowns(subdir)
+    val groups =
+      for {
+        dir <- dirs
+        subdirname <- subdirNames
+        subdir <- checkDirectory(dir / subdirname).toSeq
+        group <- upsAndDowns(subdir)
+      } yield group
 
-    val (upss, downss) = ud.unzip
-    val (ups, downs) = (upss.flatten, downss.flatten)
-
-    Migration(name = name, ups = ups, downs = downs)
+    Migration(name = name, groups = groups)
   }
 }
 

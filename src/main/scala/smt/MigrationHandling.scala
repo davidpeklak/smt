@@ -11,7 +11,7 @@ object MigrationHandling {
     def transformScripts(ss: Seq[Script]): Seq[Script] = ss.map(s => {
       ts.foldLeft(s)((s, t) => s.copy(content = t(s.content)))
     })
-    ms.map(m => m.copy(ups = transformScripts(m.ups), downs = transformScripts(m.downs)))
+    ms.map(m => m.copy(groups =  m.groups.map( group => group.copy(ups = transformScripts(group.ups), downs = transformScripts(group.downs)))))
   }
 
   def showHashesImpl(ms: Seq[Migration], s: TaskStreams): Unit = {
@@ -23,7 +23,7 @@ object MigrationHandling {
   def hashBytes(bs: Seq[Byte]): Seq[Byte] = md.digest(bs.toArray).toSeq
 
   private def hashMigration(m: Migration, preOpt: Option[Seq[Byte]]) = {
-    hashBytes(preOpt.getOrElse(Seq()) ++ m.ups.map(_.content).foldRight(Seq[Byte]())(stringToBytes(_) ++ _))
+    hashBytes(preOpt.getOrElse(Seq()) ++ m.groups.flatMap(_.ups).map(_.content).foldRight(Seq[Byte]())(stringToBytes(_) ++ _))
   }
 
   def hashMigrations(ms: Seq[Migration]): Seq[Seq[Byte]] = ms.foldLeft[Seq[Seq[Byte]]](Nil)((s, m) => s :+ hashMigration(m, s.lastOption))

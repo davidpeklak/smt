@@ -67,7 +67,7 @@ trait DBHandling {
     for (mis <- migrationsToRevert(latestCommon);
          mids <- sequence(mis.map(enrichMigrationWithDowns));
          _ <- {
-           if (mids.isEmpty  || arb) sequence(mids.map(revertMigration))
+           if (mids.isEmpty || arb) sequence(mids.map(revertMigration))
            else failure("Will not roll back migrations " + mids.map(_.mi.name).mkString(", ") + ", because allow-rollback is set to false")
          })
     yield ()
@@ -102,11 +102,20 @@ trait DBHandling {
     mhs.reverse.takeWhile(mh => !latestCommon.exists(_ == mh._2)).reverse
   }
 
+  private def applyGroup(hash: Seq[Byte], g: Group): DbAction[Unit] = {
+    for {
+      _ <- sequence(g.ups.map(applyScript(_, Up)))
+      _ <- addDowns(hash, g.downs)
+    }
+    yield ()
+  }
+
   private def applyMigration(m: Migration, hash: Seq[Byte]): DbAction[Unit] = {
     val mi = MigrationInfo(name = m.name, hash = hash, dateTime = now)
-    for (_ <- add(mi);
-         _ <- addDowns(hash, m.downs);
-         _ <- sequence(m.ups.map(applyScript(_, Up))))
+    for {
+      _ <- sequence(m.groups.map(applyGroup(hash, _)))
+      _ <- add(mi)
+    }
     yield ()
   }
 }
