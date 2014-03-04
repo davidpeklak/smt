@@ -80,7 +80,7 @@ object SchemaMigration {
       IO.assertDirectory(down)
       val downFiles = down.listFiles.toSeq
       val downFileNames = downFiles.map(_.getName)
-      val downs = downFiles.flatMap(scriptParser)
+      val downs = downFiles.flatMap(f => scriptParser(f).reverse)
 
       if (upFileNames != downFileNames) {
         println("ups and downs differ in " + dir.getCanonicalPath)

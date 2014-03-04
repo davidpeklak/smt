@@ -13,11 +13,11 @@ abstract class SqlDatabase(connection: => JConnection) extends Database {
 
   def noDataCatcher[A]: Catcher[Seq[A]]
 
-  private def exceptionToFailure[A](block: => A): Either[Failure, A] = {
+  protected def exceptionToFailure[A](block: => A): Either[Failure, A] = {
     catching(allCatcher[A]).either(block).left.map(_.toString)
   }
 
-  private def effectExceptionToFailure(block: => Unit): (Option[Failure], Database) = {
+  protected def effectExceptionToFailure(block: => Unit): (Option[Failure], Database) = {
     (exceptionToFailure(block).left.toOption, this)
   }
 
@@ -28,6 +28,11 @@ abstract class SqlDatabase(connection: => JConnection) extends Database {
 
   def withPreparedStatement[U](c: JConnection, sql: String)(f: PreparedStatement => U, ca: Catcher[U] = empty[Throwable, U]) = {
     val st = c.prepareStatement(sql)
+    catching(ca).andFinally(st.close())(f(st))
+  }
+
+  protected def withCallableStatement[U](c: JConnection, sql: String)(f: CallableStatement => U, ca: Catcher[U] = empty[Throwable, U]) = {
+    val st = c.prepareCall(sql)
     catching(ca).andFinally(st.close())(f(st))
   }
 
