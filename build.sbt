@@ -16,8 +16,11 @@ publishTo <<= (version) { version: String =>
    Some(Resolver.url(name, new URL(url))(Resolver.ivyStylePatterns))
 }
 
+resolvers += "Scalaz Bintray Repo" at "http://dl.bintray.com/scalaz/releases"
+
 libraryDependencies ++= Seq(
   "com.h2database" % "h2" % "1.3.172",
+  "org.scalaz" %% "scalaz-core" % "7.0.4",
   "org.scalacheck" %% "scalacheck" % "1.10.1" % "test",
   "org.scalatest" %% "scalatest" % "1.9.2" % "test"
 )

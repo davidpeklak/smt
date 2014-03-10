@@ -1,46 +1,29 @@
 package smt
 
-case class DbAction[A](s: StateAction[Database, Either[String, A]]) {
-
-  import DbAction.EA
-
-  def apply(db: Database): EA[A] = s.run(db)._1
-
-  def map[B](f: A => B): DbAction[B] = DbAction(s.map(_.right.map(f)))
-
-  def flatMap[B](f: A => DbAction[B]): DbAction[B] = DbAction(s.flatMap(ea => ea match {
-    case Right(a) => f(a).s
-    case Left(b) => StateAction.unit(Left(b))
-  }))
-
-  def map2[B, C](that: DbAction[B])(f: (A, B) => C): DbAction[C] = flatMap(a => that.map(b => f(a, b)))
-}
+import scalaz.StateT
+import scalaz.std.either._
 
 object DbAction {
-  type EA[A] = Either[String, A]
+  type EA[+A] = Either[String, A]
 
-  type DbStateAction[A] = StateAction[Database, EA[A]]
+  type DbAction[A] = StateT[EA, Database, A]
 
-  type R = (Option[String], Database)
+  private def apply[A](f: Database => Either[String, (Database, A)]): StateT[EA, Database, A] = StateT[EA, Database, A](f)
 
-  def unit[A](a: => A) = DbAction(StateAction.unit(Right(a)))
+  implicit val EAM = eitherMonad[String]
+  implicit val SEAM = StateT.stateTMonadState[Database, EA]
 
-  def failure(f: => String) = DbAction(StateAction.unit(Left(f)))
+  private def getFromDb[A](f: Database => EA[A]): DbAction[A] = DbAction(db => f(db) match {
+    case Left(s) => Left(s)
+    case Right(a) => Right(db, a)
+  })
 
-  def sequence[S, A](fs: Seq[DbAction[A]]): DbAction[Seq[A]] =
-    fs.foldRight(unit[Seq[A]](Nil))((f, acc) => f.map2(acc)(_ +: _))
-
-  def get: DbAction[Database] = DbAction(StateAction.get[Database].map(a => Right(a)))
-
-  def set(r: R): DbAction[Unit] = DbAction(StateAction.set(r._2).map(_ => r._1.toLeft(())))
-
-  def modify(f: Database => (Option[String], Database)): DbAction[Unit] = for {
-    s <- get
-    _ <- set(f(s))
-  } yield ()
-
-
-  def getFromDb[A](f: Database => EA[A]): DbAction[A] = DbAction(get.s.map(_.right.flatMap(f)))
+  private def modify(f: Database => (Option[String], Database)): DbAction[Unit] = DbAction(db => {
+    f(db) match {
+      case (Some(err), db2) => Left(err)
+      case (None, db2) => Right((db2, ()))
+    }
+  })
 
   def state: DbAction[Seq[MigrationInfo]] = getFromDb(_.state)
 
@@ -55,5 +38,6 @@ object DbAction {
   def removeDowns(migHash: Seq[Byte]): DbAction[Unit] = modify(_.removeDowns(migHash))
 
   def applyScript(script: Script, direction: Direction): DbAction[Unit] = modify(_.applyScript(script, direction: Direction))
-}
 
+  def failure(f: => String): DbAction[Nothing] = StateT[EA, Database, Nothing](db => Left(f))
+}

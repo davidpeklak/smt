@@ -5,6 +5,7 @@ import sbt.Keys._
 import java.util.Date
 import smt.Util._
 import DbAction._
+import scalaz.std.list._
 
 trait DBHandling {
 
@@ -18,13 +19,13 @@ trait DBHandling {
   }
 
   protected def showDbStateImpl(db: Database, s: TaskStreams): Unit = {
-    val result = DbAction.state(db)
+    val result = DbAction.state.eval(db)
     result.right.foreach(_.foreach(st => s.log.info(st.toString)))
     result.left.foreach(fail(s))
   }
 
   protected def showLatestCommonImpl(db: Database, ms: Seq[Migration], s: TaskStreams): Unit = {
-    val result = latestCommon(ms zip hashMigrations(ms))(db)
+    val result = latestCommon(ms zip hashMigrations(ms)).eval(db)
 
     result.right.foreach(lco => s.log.info(lco.map(_.toString).getOrElse("None")))
     result.left.foreach(fail(s))
@@ -36,7 +37,7 @@ trait DBHandling {
     }
   }
 
-  private def latestCommon(mis: Seq[MigrationInfo], ms: Seq[(Migration, Seq[Byte])]): Option[Common] = {
+  private def latestCommon2(mis: Seq[MigrationInfo], ms: Seq[(Migration, Seq[Byte])]): Option[Common] = {
     (mis zip ms).takeWhile {
       case (MigrationInfo(_, hi, _), (_, h)) => hi == h
     }.lastOption.map {
@@ -45,7 +46,7 @@ trait DBHandling {
   }
 
   private def latestCommon(mhs: Seq[(Migration, Seq[Byte])]): DbAction[Option[Common]] = {
-    DbAction.state.map(s => latestCommon(s, mhs))
+    DbAction.state.map(s => latestCommon2(s, mhs))
   }
 
   protected def applyMigrationsImpl(db: Database, ms: Seq[Migration], arb: Boolean, s: TaskStreams): Unit = {
@@ -64,13 +65,14 @@ trait DBHandling {
   private case class MigrationInfoWithDowns(mi: MigrationInfo, downs: Seq[Script])
 
   private def revertToLatestCommon(latestCommon: Option[Seq[Byte]], arb: Boolean): DbAction[Unit] = {
-    for (mis <- migrationsToRevert(latestCommon);
-         mids <- sequence(mis.map(enrichMigrationWithDowns));
-         _ <- {
-           if (mids.isEmpty || arb) sequence(mids.map(revertMigration))
-           else failure("Will not roll back migrations " + mids.map(_.mi.name).mkString(", ") + ", because allow-rollback is set to false")
-         })
-    yield ()
+    for {
+      mis <- migrationsToRevert(latestCommon)
+      mids <- SEAM.sequence(mis.toList.map(enrichMigrationWithDowns))
+      _ <- {
+        if (mids.isEmpty || arb) SEAM.sequence(mids.map(revertMigration))
+        else failure("Will not roll back migrations " + mids.map(_.mi.name).mkString(", ") + ", because allow-rollback is set to false")
+      }
+    } yield ()
 
   }
 
@@ -83,17 +85,17 @@ trait DBHandling {
   }
 
   private def revertMigration(mid: MigrationInfoWithDowns): DbAction[Unit] = {
-    sequence(Seq(
+    SEAM.sequence(List(
       applyScripts(mid.downs.reverse, Down),
       removeDowns(mid.mi.hash),
       remove(mid.mi.hash)
     )).map(_ => ())
   }
 
-  private def applyScripts(ss: Seq[Script], direction: Direction): DbAction[Unit] = sequence(ss.map(applyScript(_, direction))).map(_ => ())
+  private def applyScripts(ss: Seq[Script], direction: Direction): DbAction[Unit] = SEAM.sequence(ss.toList.map(applyScript(_, direction))).map(_ => ())
 
   private def applyMigrations(mhs: Seq[(Migration, Seq[Byte])], latestCommon: Option[Seq[Byte]]): DbAction[Unit] = {
-    sequence(migrationsToApply(mhs, latestCommon).map {
+    SEAM.sequence(migrationsToApply(mhs, latestCommon).toList.map {
       case (m, h) => applyMigration(m, h)
     }).map(_ => ())
   }
@@ -104,7 +106,7 @@ trait DBHandling {
 
   private def applyGroup(hash: Seq[Byte], g: Group): DbAction[Unit] = {
     for {
-      _ <- sequence(g.ups.map(applyScript(_, Up)))
+      _ <- SEAM.sequence(g.ups.toList.map(applyScript(_, Up)))
       _ <- addDowns(hash, g.downs)
     }
     yield ()
@@ -113,7 +115,7 @@ trait DBHandling {
   private def applyMigration(m: Migration, hash: Seq[Byte]): DbAction[Unit] = {
     val mi = MigrationInfo(name = m.name, hash = hash, dateTime = now)
     for {
-      _ <- sequence(m.groups.map(applyGroup(hash, _)))
+      _ <- SEAM.sequence(m.groups.toList.map(applyGroup(hash, _)))
       _ <- add(mi)
     }
     yield ()
