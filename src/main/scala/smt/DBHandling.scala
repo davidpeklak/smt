@@ -4,12 +4,12 @@ import sbt._
 import sbt.Keys._
 import java.util.Date
 import smt.Util._
-import DbAction._
-import scalaz.std.list._
 
 trait DBHandling {
 
   import MigrationHandling._
+
+  import FreeDbAction._
 
   protected def now: Date = new Date
 
@@ -18,14 +18,17 @@ trait DBHandling {
     throw new Exception(e)
   }
 
+  protected def run[A](fdba: FreeDbAction[A], db: Database): Either[String, A] = fdba.foldMap(ffDbkTransition).run(db)
+
   protected def showDbStateImpl(db: Database, s: TaskStreams): Unit = {
-    val result = DbAction.state.eval(db)
+    val result = run(state, db)
+
     result.right.foreach(_.foreach(st => s.log.info(st.toString)))
     result.left.foreach(fail(s))
   }
 
   protected def showLatestCommonImpl(db: Database, ms: Seq[Migration], s: TaskStreams): Unit = {
-    val result = latestCommon(ms zip hashMigrations(ms)).eval(db)
+    val result = run(latestCommon(ms zip hashMigrations(ms)), db)
 
     result.right.foreach(lco => s.log.info(lco.map(_.toString).getOrElse("None")))
     result.left.foreach(fail(s))
@@ -45,8 +48,8 @@ trait DBHandling {
     }
   }
 
-  private def latestCommon(mhs: Seq[(Migration, Seq[Byte])]): DbAction[Option[Common]] = {
-    DbAction.state.map(s => latestCommon2(s, mhs))
+  private def latestCommon(mhs: Seq[(Migration, Seq[Byte])]): FreeDbAction[Option[Common]] = {
+    state.map(s => latestCommon2(s, mhs))
   }
 
   protected def applyMigrationsImpl(db: Database, ms: Seq[Migration], arb: Boolean, s: TaskStreams): Unit = {
@@ -58,64 +61,70 @@ trait DBHandling {
            _ <- applyMigrations(mhs, lcho))
       yield ()
 
-    val result = action(db)
+    val result = run(action, db)
     result.left.foreach(fail(s))
   }
 
   private case class MigrationInfoWithDowns(mi: MigrationInfo, downs: Seq[Script])
 
-  private def revertToLatestCommon(latestCommon: Option[Seq[Byte]], arb: Boolean): DbAction[Unit] = {
+  private def revertToLatestCommon(latestCommon: Option[Seq[Byte]], arb: Boolean): FreeDbAction[Unit] = {
     for {
       mis <- migrationsToRevert(latestCommon)
-      mids <- SEAM.sequence(mis.toList.map(enrichMigrationWithDowns))
+      mids <- sequence(mis.map(enrichMigrationWithDowns))
       _ <- {
-        if (mids.isEmpty || arb) SEAM.sequence(mids.map(revertMigration))
+        if (mids.isEmpty || arb) sequence(mids.map(revertMigration))
         else failure("Will not roll back migrations " + mids.map(_.mi.name).mkString(", ") + ", because allow-rollback is set to false")
       }
     } yield ()
 
   }
 
-  private def migrationsToRevert(latestCommon: Option[Seq[Byte]]): DbAction[Seq[MigrationInfo]] = {
-    DbAction.state.map(_.reverse.takeWhile(mi => !latestCommon.exists(_ == mi.hash)))
+  private def migrationsToRevert(latestCommon: Option[Seq[Byte]]): FreeDbAction[Seq[MigrationInfo]] = {
+    state.map(_.reverse.takeWhile(mi => !latestCommon.exists(_ == mi.hash)))
   }
 
-  private def enrichMigrationWithDowns(mi: MigrationInfo): DbAction[MigrationInfoWithDowns] = {
-    downs(mi.hash).map(MigrationInfoWithDowns(mi, _))
+  private def enrichMigrationWithDowns(mi: MigrationInfo): FreeDbAction[MigrationInfoWithDowns] = {
+    downs(mi.hash).map(ds => MigrationInfoWithDowns(mi, ds))
   }
 
-  private def revertMigration(mid: MigrationInfoWithDowns): DbAction[Unit] = {
-    SEAM.sequence(List(
-      applyScripts(mid.downs.reverse, Down),
-      removeDowns(mid.mi.hash),
-      remove(mid.mi.hash)
-    )).map(_ => ())
+  private def revertMigration(mid: MigrationInfoWithDowns): FreeDbAction[Unit] = {
+    for {
+      _ <- applyScripts(mid.downs.reverse, Down)
+      _ <- removeDowns(mid.mi.hash)
+      _ <- remove(mid.mi.hash)
+    } yield ()
   }
 
-  private def applyScripts(ss: Seq[Script], direction: Direction): DbAction[Unit] = SEAM.sequence(ss.toList.map(applyScript(_, direction))).map(_ => ())
+  private def applyScripts(ss: Seq[Script], direction: Direction): FreeDbAction[Unit] = {
+    for {
+      _ <- sequence(ss.map(s => applyScript(s, direction)))
+    } yield ()
+  }
 
-  private def applyMigrations(mhs: Seq[(Migration, Seq[Byte])], latestCommon: Option[Seq[Byte]]): DbAction[Unit] = {
-    SEAM.sequence(migrationsToApply(mhs, latestCommon).toList.map {
+  private def applyMigrations(mhs: Seq[(Migration, Seq[Byte])], latestCommon: Option[Seq[Byte]]): FreeDbAction[Unit] = {
+    for {
+      _ <- sequence(migrationsToApply(mhs, latestCommon).map {
       case (m, h) => applyMigration(m, h)
-    }).map(_ => ())
+    })
+    } yield ()
   }
 
   private def migrationsToApply(mhs: Seq[(Migration, Seq[Byte])], latestCommon: Option[Seq[Byte]]): Seq[(Migration, Seq[Byte])] = {
     mhs.reverse.takeWhile(mh => !latestCommon.exists(_ == mh._2)).reverse
   }
 
-  private def applyGroup(hash: Seq[Byte], g: Group): DbAction[Unit] = {
+  private def applyGroup(hash: Seq[Byte], g: Group): FreeDbAction[Unit] = {
     for {
-      _ <- SEAM.sequence(g.ups.toList.map(applyScript(_, Up)))
+      _ <- sequence(g.ups.map(s => applyScript(s, Up)))
       _ <- addDowns(hash, g.downs)
     }
     yield ()
   }
 
-  private def applyMigration(m: Migration, hash: Seq[Byte]): DbAction[Unit] = {
+  private def applyMigration(m: Migration, hash: Seq[Byte]): FreeDbAction[Unit] = {
     val mi = MigrationInfo(name = m.name, hash = hash, dateTime = now)
     for {
-      _ <- SEAM.sequence(m.groups.toList.map(applyGroup(hash, _)))
+      _ <- sequence(m.groups.map(applyGroup(hash, _)))
       _ <- add(mi)
     }
     yield ()
