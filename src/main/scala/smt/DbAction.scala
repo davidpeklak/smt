@@ -18,5 +18,7 @@ object DbAction {
 
   case class ApplyScript(script: Script, direction: Direction) extends DbAction[Unit]
 
+  case class TryApplyScript(script: Script, direction: Direction) extends DbAction[Option[String]] // Some[String] represents a failure
+
   case class Failure(f: String) extends DbAction[Nothing]
 }

@@ -50,6 +50,7 @@ object FreeDbAction {
       case Remove(hash) => dbk(db => db.remove(hash)._1.toLeft(()).asInstanceOf[EA[T]])
       case RemoveDowns(migHash) => dbk(db => db.removeDowns(migHash)._1.toLeft(()).asInstanceOf[EA[T]])
       case ApplyScript(script, direction) => dbk(db => db.applyScript(script, direction)._1.toLeft(()).asInstanceOf[EA[T]])
+      case TryApplyScript(script, direction) => dbk(db => Right(db.applyScript(script, direction)._1).asInstanceOf[EA[T]])
       case Failure(f) => dbk(_ => Left(f))
     }
   }
