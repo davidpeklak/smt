@@ -4,6 +4,8 @@ import sbt._
 import sbt.Keys._
 import java.util.Date
 import smt.Util._
+import scalaz.{\/-, EitherT}
+import scalaz.syntax.std.option._
 
 trait DBHandling {
 
@@ -18,7 +20,7 @@ trait DBHandling {
     throw new Exception(e)
   }
 
-  protected def run[A](fdba: FreeDbAction[A], db: Database): Either[String, A] = fdba.foldMap(ffDbkTransition).run(db)
+  protected def run[A](fdba: FreeDbAction[A], db: Database): Either[String, A] = fdba.foldMap(ffDbkTransformation).run(db)
 
   protected def showDbStateImpl(db: Database, s: TaskStreams): Unit = {
     val result = run(state, db)
@@ -104,8 +106,8 @@ trait DBHandling {
   private def applyMigrations(mhs: Seq[(Migration, Seq[Byte])], latestCommon: Option[Seq[Byte]]): FreeDbAction[Unit] = {
     for {
       _ <- sequence(migrationsToApply(mhs, latestCommon).map {
-      case (m, h) => applyMigration(m, h)
-    })
+        case (m, h) => applyMigration(m, h)
+      })
     } yield ()
   }
 
@@ -113,12 +115,18 @@ trait DBHandling {
     mhs.reverse.takeWhile(mh => !latestCommon.exists(_ == mh._2)).reverse
   }
 
-  private def applyGroup(hash: Seq[Byte], g: Group): FreeDbAction[Unit] = {
-    for {
-      _ <- sequence(g.ups.map(s => applyScript(s, Up)))
-      _ <- addDowns(hash, g.downs)
-    }
-    yield ()
+  private def applyGroup(hash: Seq[Byte], g: Group): FreeDbAction[Option[String]] = {
+
+    val ups = g.ups
+
+    val foo = ups.foldLeft[EitherT[FreeDbAction, String, Unit]](EitherT.right[FreeDbAction, String, Unit](FDBAM.point(()))){case (mc, up) => {
+      for {
+        _ <- EitherT[FreeDbAction, String, Unit](tryApplyScript(up, Up).map(_ <\/ ()))
+        _ <- mc
+      } yield ()
+    }}
+
+    foo.fold(f => Some(f), _ => None)
   }
 
   private def applyMigration(m: Migration, hash: Seq[Byte]): FreeDbAction[Unit] = {

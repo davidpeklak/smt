@@ -33,6 +33,8 @@ object FreeDbAction {
 
   def applyScript(script: Script, direction: Direction): FreeDbAction[Unit] = req(ApplyScript(script, direction))
 
+  def tryApplyScript(script: Script, direction: Direction): FreeDbAction[Option[String]] = req(TryApplyScript(script, direction))
+
   def failure(f: String): FreeDbAction[Nothing] = req(Failure(f))
 
   type EA[+A] = Either[String, A]
@@ -41,7 +43,7 @@ object FreeDbAction {
   def dbk[A](f: Database => EA[A]): DBK[A] = Kleisli[EA, Database, A](f)
 
   // this works under the assumption that the db implementation is stateless (i.e. all state is on the physical DB)
-  val dbkTransition: (DbAction ~> DBK) = new (DbAction ~> DBK){
+  val dbkTransformation: (DbAction ~> DBK) = new (DbAction ~> DBK){
     def apply[T](a: DbAction[T]): DBK[T] = a match {
       case State => dbk(db => db.state)
       case Downs(hash) => dbk(db => db.downs(hash).asInstanceOf[EA[T]])
@@ -63,5 +65,5 @@ object FreeDbAction {
     def bind[A, B](fa: DBK[A])(f: A => DBK[B]): DBK[B] = fa.flatMap(f)
   }
 
-  val ffDbkTransition = freeLift(dbkTransition)
+  val ffDbkTransformation = freeLift(dbkTransformation)
 }
