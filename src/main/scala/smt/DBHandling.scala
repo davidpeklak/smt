@@ -10,17 +10,8 @@ import scalaz.syntax.std.option._
 trait DBHandling {
 
   import MigrationHandling._
-
   import FreeDbAction._
-
-  protected def now: Date = new Date
-
-  private def fail(s: TaskStreams)(e: String) {
-    s.log.error(e)
-    throw new Exception(e)
-  }
-
-  protected def run[A](fdba: FreeDbAction[A], db: Database): Either[String, A] = fdba.foldMap(ffDbkTransformation).run(db)
+  import DBHandling._
 
   protected def showDbStateImpl(db: Database, s: TaskStreams): Unit = {
     val result = run(state, db)
@@ -34,6 +25,26 @@ trait DBHandling {
 
     result.right.foreach(lco => s.log.info(lco.map(_.toString).getOrElse("None")))
     result.left.foreach(fail(s))
+  }
+
+  protected def applyMigrationsImpl(db: Database, ms: Seq[Migration], arb: Boolean, s: TaskStreams): Unit = {
+    val action = applyMigrationsImplAction(ms, arb)
+    val result = run(action, db)
+    result.left.foreach(fail(s))
+  }
+}
+
+object DBHandling {
+
+  import MigrationHandling._
+
+  import FreeDbAction._
+
+  def now: Date = new Date
+
+  private def fail(s: TaskStreams)(e: String) {
+    s.log.error(e)
+    throw new Exception(e)
   }
 
   case class Common(db: MigrationInfo, currentName: String) {
@@ -54,17 +65,13 @@ trait DBHandling {
     state.map(s => latestCommon2(s, mhs))
   }
 
-  protected def applyMigrationsImpl(db: Database, ms: Seq[Migration], arb: Boolean, s: TaskStreams): Unit = {
+  def applyMigrationsImplAction(ms: Seq[Migration], arb: Boolean): FreeDbAction[Unit] = {
     val mhs = ms zip hashMigrations(ms)
 
-    val action =
-      for (lcho <- latestCommon(mhs).map(_.map(_.db.hash));
-           _ <- revertToLatestCommon(lcho, arb);
-           _ <- applyMigrations(mhs, lcho))
-      yield ()
-
-    val result = run(action, db)
-    result.left.foreach(fail(s))
+    for (lcho <- latestCommon(mhs).map(_.map(_.db.hash));
+         _ <- revertToLatestCommon(lcho, arb);
+         _ <- applyMigrations(mhs, lcho))
+    yield ()
   }
 
   private case class MigrationInfoWithDowns(mi: MigrationInfo, downs: Seq[Script])
@@ -119,12 +126,14 @@ trait DBHandling {
 
     val ups = g.ups
 
-    val foo = ups.foldLeft[EitherT[FreeDbAction, String, Unit]](EitherT.right[FreeDbAction, String, Unit](FDBAM.point(()))){case (mc, up) => {
-      for {
-        _ <- EitherT[FreeDbAction, String, Unit](tryApplyScript(up, Up).map(_ <\/ ()))
-        _ <- mc
-      } yield ()
-    }}
+    val foo = ups.foldLeft[EitherT[FreeDbAction, String, Unit]](EitherT.right[FreeDbAction, String, Unit](FDBAM.point(()))) {
+      case (mc, up) => {
+        for {
+          _ <- EitherT[FreeDbAction, String, Unit](tryApplyScript(up, Up).map(_ <\/()))
+          _ <- mc
+        } yield ()
+      }
+    }
 
     foo.fold(f => Some(f), _ => None)
   }

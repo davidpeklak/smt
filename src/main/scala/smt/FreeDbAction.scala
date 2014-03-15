@@ -1,7 +1,8 @@
 package smt
 
-import scalaz.{Monad, Kleisli, Free, ~>}
+import scalaz._
 import scalaz.std.list._
+import scalaz.Free.Return
 
 object FreeDbAction {
   
@@ -11,7 +12,7 @@ object FreeDbAction {
 
   type DbActionFreeFunctor[+A] = FreeFunctor[DbAction, A]
 
-  type FreeDbAction[A] = Free[DbActionFreeFunctor, A]
+  type FreeDbAction[+A] = Free[DbActionFreeFunctor, A]
 
   val FDBAM = Free.freeMonad[DbActionFreeFunctor]
 
@@ -38,6 +39,53 @@ object FreeDbAction {
   def failure(f: String): FreeDbAction[Nothing] = req(Failure(f))
 
   type EA[+A] = Either[String, A]
+  
+  def eaTransformation(db: Database): (DbAction ~> EA) = new (DbAction ~> EA) {
+    def apply[T](a: DbAction[T]): EA[T] =  a match {
+      case State => db.state
+      case Downs(hash) => db.downs(hash).asInstanceOf[EA[T]]
+      case Add(migrationInfo) => db.add(migrationInfo)._1.toLeft(()).asInstanceOf[EA[T]]
+      case AddDowns(migHash, downs) => db.addDowns(migHash, downs)._1.toLeft(()).asInstanceOf[EA[T]]
+      case Remove(hash) => db.remove(hash)._1.toLeft(()).asInstanceOf[EA[T]]
+      case RemoveDowns(migHash) => db.removeDowns(migHash)._1.toLeft(()).asInstanceOf[EA[T]]
+      case ApplyScript(script, direction) => db.applyScript(script, direction)._1.toLeft(()).asInstanceOf[EA[T]]
+      case TryApplyScript(script, direction) => Right(db.applyScript(script, direction)._1).asInstanceOf[EA[T]]
+      case Failure(f) => Left(f)
+    }
+  }
+
+  implicit val eaFunctor: Functor[EA] = new Functor[EA]  {
+    def map[A, B](a: EA[A])(f: A => B): EA[B] = a.right.map(f)
+  }
+
+  def ffEaTransformation(db: Database) = freeLift(eaTransformation(db))
+
+  def extractEither[A](ea: EA[Free[EA, A]]): Free[EA, A] = ea match {
+    case Right(fea) => fea
+    case Left(l) => throw new Exception("Scheisse")
+  }
+
+  // all the FEA shit is senseless
+  type FEA[+A] = () => EA[A]
+
+  def feaTransformation(db: Database): (DbAction ~> FEA) = new (DbAction ~> FEA) {
+    def apply[T](a: DbAction[T]): FEA[T] = () => eaTransformation(db)(a)
+  }
+
+  implicit val feaFunctor: Functor[FEA] = new Functor[FEA]  {
+    def map[A, B](a: FEA[A])(f: A => B): FEA[B] = () => {
+      val ea = a()
+      ea.right.map(f)
+    }
+  }
+  
+  def ffFeaTransformation(db: Database) = freeLift(feaTransformation(db))
+
+  def extractFEither[A](fea: FEA[Free[FEA, A]]): Free[FEA, A] = fea() match {
+    case Right(ffea) => ffea
+    case Left(l) => throw new Exception("Scheisse")
+  }
+
   type DBK[+A] = Kleisli[EA, Database, A]
 
   def dbk[A](f: Database => EA[A]): DBK[A] = Kleisli[EA, Database, A](f)
@@ -66,4 +114,7 @@ object FreeDbAction {
   }
 
   val ffDbkTransformation = freeLift(dbkTransformation)
+
+  def run[A](fdba: FreeDbAction[A], db: Database): Either[String, A] = fdba.foldMap(ffDbkTransformation).run(db)
+
 }
