@@ -8,11 +8,17 @@ import scalaz.Free
 class DbHandlingTest extends FunSuite with PropTesting {
 
   class DatabaseMock extends Database {
+
+    var addCount: Int = 0
+
     def state: Either[Failure, Seq[MigrationInfo]] = Right(Seq())
 
     def downs(hash: Seq[Byte]): Either[Failure, Seq[Script]] = Right(Seq())
 
-    def add(migrationInfo: MigrationInfo): (Option[Failure], Database) = (None, this)
+    def add(migrationInfo: MigrationInfo): (Option[Failure], Database) = {
+      addCount = addCount + 1
+      (None, this)
+    }
 
     def addDowns(migHash: Seq[Byte], downs: Seq[Script]): (Option[Failure], Database) = (None, this)
 
@@ -29,30 +35,9 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val action = DBHandling.applyMigrationsImplAction(ms = Seq(mig), arb = false)
 
-    FreeDbAction.run(action, new DatabaseMock)
+    FreeDbAction.run(action)(new DatabaseMock)
   }
 
-  /*test("apply 50 migrations - smoke") {
-
-    val mig = migGen.apply(Gen.Params()).get // bochn
-
-    val action = DBHandling.applyMigrationsImplAction(ms = Seq.fill(50)(mig), arb = false)
-
-    FreeDbAction.run(action, new DatabaseMock)
-  } */
-
-  /*test("apply 500 migrations ea - smoke") {
-
-    val mig = migGen.apply(Gen.Params()).get // bochn
-
-    val action = DBHandling.applyMigrationsImplAction(ms = Seq.fill(500)(mig), arb = false)
-
-    import FreeDbAction._
-
-    val sAction: Free[EA, Unit] = action.mapSuspension(ffEaTransformation(new DatabaseMock))
-
-    sAction.go(extractEither[Unit])
-  } */
 
   test("apply 10000 migrations fea - smoke") {
 
@@ -62,8 +47,10 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     import FreeDbAction._
 
-    val sAction: Free[FEA, Unit] = action.mapSuspension(ffFeaTransformation(new DatabaseMock))
+    val db = new DatabaseMock
 
-    sAction.go(extractFEither[Unit])
+    FreeDbAction.run(action)(db)
+
+    assert(db.addCount === 10000)
   }
 }

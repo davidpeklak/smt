@@ -2,10 +2,10 @@ package smt
 
 import scalaz._
 import scalaz.std.list._
-import scalaz.Free.Return
+import scalaz.std.function._
 
 object FreeDbAction {
-  
+
   import DbAction._
 
   import FreeFunctor._
@@ -14,107 +14,76 @@ object FreeDbAction {
 
   type FreeDbAction[+A] = Free[DbActionFreeFunctor, A]
 
+  type EFreeDbAction[+A] = EitherT[FreeDbAction, String, A]
+  def EFreeDbAction[A](a: FreeDbAction[SE[A]]) = EitherT[FreeDbAction, String, A](a)
+
   val FDBAM = Free.freeMonad[DbActionFreeFunctor]
+
+  val EFDBAM = EitherT.eitherTMonad[FreeDbAction, String]
 
   private def req[A](dba: DbAction[A]): FreeDbAction[A] = request[DbAction, A](dba)
 
-  def sequence[A](ss: Seq[FreeDbAction[A]]): FreeDbAction[Seq[A]] = FDBAM.sequence(ss.toList)
+  private def ereq[A](dba: DbAction[SE[A]]): EFreeDbAction[A] = EFreeDbAction(req(dba))
 
-  def state: FreeDbAction[Seq[MigrationInfo]] = req(State)
+  def sequence[A](ss: Seq[EFreeDbAction[A]]): EFreeDbAction[Seq[A]] = EFDBAM.sequence(ss.toList)
 
-  def downs(hash: Seq[Byte]): FreeDbAction[Seq[Script]] = req(Downs(hash))
+  def state: EFreeDbAction[Seq[MigrationInfo]] = ereq(State)
 
-  def add(migrationInfo: MigrationInfo) : FreeDbAction[Unit] = req(Add(migrationInfo))
+  def downs(hash: Seq[Byte]): EFreeDbAction[Seq[Script]] = ereq(Downs(hash))
 
-  def addDowns(migHash: Seq[Byte], downs: Seq[Script]): FreeDbAction[Unit] = req(AddDowns(migHash, downs))
+  def add(migrationInfo: MigrationInfo): EFreeDbAction[Unit] = ereq(Add(migrationInfo))
 
-  def remove(hash: Seq[Byte]): FreeDbAction[Unit] = req(Remove(hash))
+  def addDowns(migHash: Seq[Byte], downs: Seq[Script]): EFreeDbAction[Unit] = ereq(AddDowns(migHash, downs))
 
-  def removeDowns(migHash: Seq[Byte]): FreeDbAction[Unit] = req(RemoveDowns(migHash))
+  def remove(hash: Seq[Byte]): EFreeDbAction[Unit] = ereq(Remove(hash))
 
-  def applyScript(script: Script, direction: Direction): FreeDbAction[Unit] = req(ApplyScript(script, direction))
+  def removeDowns(migHash: Seq[Byte]): EFreeDbAction[Unit] = ereq(RemoveDowns(migHash))
 
-  def tryApplyScript(script: Script, direction: Direction): FreeDbAction[Option[String]] = req(TryApplyScript(script, direction))
+  def applyScript(script: Script, direction: Direction): EFreeDbAction[Unit] = ereq(ApplyScript(script, direction))
 
-  def failure(f: String): FreeDbAction[Nothing] = req(Failure(f))
+  def failure(f: String): EFreeDbAction[Nothing] = ereq(Failure(f))
+
+  type WFreeDbAction[+A] = WriterT[FreeDbAction, List[Script], A]
+  def WFreeDbAction[A](t: FreeDbAction[(List[Script], A)]) = WriterT[FreeDbAction, List[Script], A](t)
+
+  type EWFreeDbAction[+A] = EitherT[WFreeDbAction, String, A]
+  def EWFreeDbAction[A](wa: WFreeDbAction[SE[A]]) = EitherT[WFreeDbAction, String, A](wa)
+
+  val EWFDBAM = EitherT.eitherTMonad[WFreeDbAction, String]
+
+  def wSequence[A](ss: Seq[EWFreeDbAction[A]]): EWFreeDbAction[Seq[A]] = EWFDBAM.sequence(ss.toList)
 
   type EA[+A] = Either[String, A]
-  
-  def eaTransformation(db: Database): (DbAction ~> EA) = new (DbAction ~> EA) {
-    def apply[T](a: DbAction[T]): EA[T] =  a match {
-      case State => db.state
-      case Downs(hash) => db.downs(hash).asInstanceOf[EA[T]]
-      case Add(migrationInfo) => db.add(migrationInfo)._1.toLeft(()).asInstanceOf[EA[T]]
-      case AddDowns(migHash, downs) => db.addDowns(migHash, downs)._1.toLeft(()).asInstanceOf[EA[T]]
-      case Remove(hash) => db.remove(hash)._1.toLeft(()).asInstanceOf[EA[T]]
-      case RemoveDowns(migHash) => db.removeDowns(migHash)._1.toLeft(()).asInstanceOf[EA[T]]
-      case ApplyScript(script, direction) => db.applyScript(script, direction)._1.toLeft(()).asInstanceOf[EA[T]]
-      case TryApplyScript(script, direction) => Right(db.applyScript(script, direction)._1).asInstanceOf[EA[T]]
-      case Failure(f) => Left(f)
+
+  def eit[A](ea: EA[A]): SE[A] = ea match {
+    case Left(s) => -\/(s)
+    case Right(a) => \/-(a)
+  }
+
+  def idTransformation(db: Database): (DbAction ~> Id.Id) = new (DbAction ~> Id.Id) {
+    def apply[T](a: DbAction[T]): T = a match {
+      case State => eit(db.state).asInstanceOf[T]
+      case Downs(hash) => eit(db.downs(hash)).asInstanceOf[T]
+      case Add(migrationInfo) => eit(db.add(migrationInfo)._1.toLeft(())).asInstanceOf[T]
+      case AddDowns(migHash, downs) => eit(db.addDowns(migHash, downs)._1.toLeft(())).asInstanceOf[T]
+      case Remove(hash) => eit(db.remove(hash)._1.toLeft(())).asInstanceOf[T]
+      case RemoveDowns(migHash) => eit(db.removeDowns(migHash)._1.toLeft(())).asInstanceOf[T]
+      case ApplyScript(script, direction) => eit(db.applyScript(script, direction)._1.toLeft(())).asInstanceOf[T]
+      case Failure(f) => eit(Left(f)).asInstanceOf[T]
     }
   }
 
-  implicit val eaFunctor: Functor[EA] = new Functor[EA]  {
-    def map[A, B](a: EA[A])(f: A => B): EA[B] = a.right.map(f)
+  def ffIdTransformation(db: Database) = freeLift(idTransformation(db))
+
+  type FID[+A] = () => A
+
+  def fidTransformation(db: Database): (DbAction ~> FID) = new (DbAction ~> FID) {
+    def apply[T](a: DbAction[T]): FID[T] = () => idTransformation(db)[T](a)
   }
 
-  def ffEaTransformation(db: Database) = freeLift(eaTransformation(db))
+  def ffFidTransformation(db: Database) = freeLift(fidTransformation(db))
 
-  def extractEither[A](ea: EA[Free[EA, A]]): Free[EA, A] = ea match {
-    case Right(fea) => fea
-    case Left(l) => throw new Exception("Scheisse")
-  }
+  def extractFid[A](fid: FID[Free[FID, A]]): Free[FID, A] = fid()
 
-  // all the FEA shit is senseless
-  type FEA[+A] = () => EA[A]
-
-  def feaTransformation(db: Database): (DbAction ~> FEA) = new (DbAction ~> FEA) {
-    def apply[T](a: DbAction[T]): FEA[T] = () => eaTransformation(db)(a)
-  }
-
-  implicit val feaFunctor: Functor[FEA] = new Functor[FEA]  {
-    def map[A, B](a: FEA[A])(f: A => B): FEA[B] = () => {
-      val ea = a()
-      ea.right.map(f)
-    }
-  }
-  
-  def ffFeaTransformation(db: Database) = freeLift(feaTransformation(db))
-
-  def extractFEither[A](fea: FEA[Free[FEA, A]]): Free[FEA, A] = fea() match {
-    case Right(ffea) => ffea
-    case Left(l) => throw new Exception("Scheisse")
-  }
-
-  type DBK[+A] = Kleisli[EA, Database, A]
-
-  def dbk[A](f: Database => EA[A]): DBK[A] = Kleisli[EA, Database, A](f)
-
-  // this works under the assumption that the db implementation is stateless (i.e. all state is on the physical DB)
-  val dbkTransformation: (DbAction ~> DBK) = new (DbAction ~> DBK){
-    def apply[T](a: DbAction[T]): DBK[T] = a match {
-      case State => dbk(db => db.state)
-      case Downs(hash) => dbk(db => db.downs(hash).asInstanceOf[EA[T]])
-      case Add(migrationInfo) => dbk(db => db.add(migrationInfo)._1.toLeft(()).asInstanceOf[EA[T]])
-      case AddDowns(migHash, downs) => dbk(db => db.addDowns(migHash, downs)._1.toLeft(()).asInstanceOf[EA[T]])
-      case Remove(hash) => dbk(db => db.remove(hash)._1.toLeft(()).asInstanceOf[EA[T]])
-      case RemoveDowns(migHash) => dbk(db => db.removeDowns(migHash)._1.toLeft(()).asInstanceOf[EA[T]])
-      case ApplyScript(script, direction) => dbk(db => db.applyScript(script, direction)._1.toLeft(()).asInstanceOf[EA[T]])
-      case TryApplyScript(script, direction) => dbk(db => Right(db.applyScript(script, direction)._1).asInstanceOf[EA[T]])
-      case Failure(f) => dbk(_ => Left(f))
-    }
-  }
-
-  import scalaz.std.either._
-
-  implicit val dbkMonad : Monad[DBK] = new Monad[DBK] {
-    def point[A](a: => A): DBK[A] = dbk(_ => Right(a))
-
-    def bind[A, B](fa: DBK[A])(f: A => DBK[B]): DBK[B] = fa.flatMap(f)
-  }
-
-  val ffDbkTransformation = freeLift(dbkTransformation)
-
-  def run[A](fdba: FreeDbAction[A], db: Database): Either[String, A] = fdba.foldMap(ffDbkTransformation).run(db)
-
+  def run[A](fba: EFreeDbAction[A])(db: Database): SE[A] = fba.run.mapSuspension(ffFidTransformation(db)).run
 }

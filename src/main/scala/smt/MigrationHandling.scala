@@ -27,4 +27,7 @@ object MigrationHandling {
   }
 
   def hashMigrations(ms: Seq[Migration]): Seq[Seq[Byte]] = ms.foldLeft[Seq[Seq[Byte]]](Nil)((s, m) => s :+ hashMigration(m, s.lastOption))
+
+  def failHash(failure: String): Seq[Byte] = hashBytes(stringToBytes(failure))
+
 }
