@@ -131,7 +131,7 @@ object DBHandling {
     val go: EFreeDbAction[Unit] =
       for (_ <- sequence(ups.map(up => applyScript(up, Up)))) yield ()
 
-    EWFreeDbAction(WFreeDbAction(go.run.map(_.fold[(List[Script], SE[Unit])](f => (Nil, -\/(f)), _ => (downs.toList, \/-(()))))))
+    EWFreeDbAction(WriterT.putWith[FreeDbAction, List[Script], SE[Unit]](go.run)(_.fold(f => Nil, _ => downs.toList)))
   }
 
   private def applyMigration(m: Migration, hash: Seq[Byte]): EFreeDbAction[Unit] = {
@@ -147,7 +147,12 @@ object DBHandling {
       for {
         gs <- wSequence(m.groups.map(applyGroup)).run.run
         r <- gs match {
-          case (downs, -\/(f)) => finalize(downs, failHash(f)).run
+          case (downs, -\/(f)) => {
+            for {
+              _ <- finalize(downs, failHash(f))
+              _ <- failure(f)
+            } yield ()
+          }.run
           case (downs, \/-(_)) => finalize(downs, hash).run
         }
       } yield r
