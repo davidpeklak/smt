@@ -3,6 +3,7 @@ package smt
 import scalaz._
 import scalaz.std.list._
 import scalaz.std.function._
+import UpMoveState._
 
 object FreeDbAction {
 
@@ -17,15 +18,9 @@ object FreeDbAction {
   type EFreeDbAction[+A] = EitherT[FreeDbAction, String, A]
   def EFreeDbAction[A](a: FreeDbAction[SE[A]]) = EitherT[FreeDbAction, String, A](a)
 
-  val FDBAM = Free.freeMonad[DbActionFreeFunctor]
-
-  val EFDBAM = EitherT.eitherTMonad[FreeDbAction, String]
-
   private def req[A](dba: DbAction[A]): FreeDbAction[A] = request[DbAction, A](dba)
 
   private def ereq[A](dba: DbAction[SE[A]]): EFreeDbAction[A] = EFreeDbAction(req(dba))
-
-  def sequence[A](ss: Seq[EFreeDbAction[A]]): EFreeDbAction[Seq[A]] = EFDBAM.sequence(ss.toList)
 
   def state: EFreeDbAction[Seq[MigrationInfo]] = ereq(State)
 
@@ -43,15 +38,11 @@ object FreeDbAction {
 
   def failure(f: String): EFreeDbAction[Nothing] = ereq(Failure(f))
 
-  type WFreeDbAction[+A] = WriterT[FreeDbAction, List[Script], A]
-  def WFreeDbAction[A](t: FreeDbAction[(List[Script], A)]) = WriterT[FreeDbAction, List[Script], A](t)
+  type WFreeDbAction[+A] = WriterT[FreeDbAction, UpMoveState, A]
+  def WFreeDbAction[A](t: FreeDbAction[(UpMoveState, A)]) = WriterT[FreeDbAction, UpMoveState, A](t)
 
   type EWFreeDbAction[+A] = EitherT[WFreeDbAction, String, A]
   def EWFreeDbAction[A](wa: WFreeDbAction[SE[A]]) = EitherT[WFreeDbAction, String, A](wa)
-
-  val EWFDBAM = EitherT.eitherTMonad[WFreeDbAction, String]
-
-  def wSequence[A](ss: Seq[EWFreeDbAction[A]]): EWFreeDbAction[Seq[A]] = EWFDBAM.sequence(ss.toList)
 
   type EA[+A] = Either[String, A]
 

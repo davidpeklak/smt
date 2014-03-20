@@ -4,10 +4,13 @@ import sbt._
 import sbt.Keys._
 import java.util.Date
 import smt.Util._
+import smt.DbAction.SE
+import UpMoveState._
 import scalaz._
 import scalaz.syntax.std.option._
+import scalaz.syntax.std.list._
 import scalaz.\/-
-import smt.DbAction.SE
+import scalaz.Scalaz._
 
 trait DBHandling {
 
@@ -64,7 +67,7 @@ object DBHandling {
   }
 
   private def latestCommon(mhs: Seq[(Migration, Seq[Byte])]): EFreeDbAction[Option[Common]] = {
-    state.map(s => latestCommon2(s, mhs))
+    state.map(latestCommon2(_, mhs))
   }
 
   def applyMigrationsImplAction(ms: Seq[Migration], arb: Boolean): EFreeDbAction[Unit] = {
@@ -81,9 +84,9 @@ object DBHandling {
   private def revertToLatestCommon(latestCommon: Option[Seq[Byte]], arb: Boolean): EFreeDbAction[Unit] = {
     for {
       mis <- migrationsToRevert(latestCommon)
-      mids <- sequence(mis.map(enrichMigrationWithDowns))
+      mids <- mis.toList.traverse(enrichMigrationWithDowns)
       _ <- {
-        if (mids.isEmpty || arb) sequence(mids.map(revertMigration))
+        if (mids.isEmpty || arb) mids.toList.traverse(revertMigration)
         else failure("Will not roll back migrations " + mids.map(_.mi.name).mkString(", ") + ", because allow-rollback is set to false")
       }
     } yield ()
@@ -95,66 +98,47 @@ object DBHandling {
   }
 
   private def enrichMigrationWithDowns(mi: MigrationInfo): EFreeDbAction[MigrationInfoWithDowns] = {
-    downs(mi.hash).map(ds => MigrationInfoWithDowns(mi, ds))
+    downs(mi.hash).map(MigrationInfoWithDowns(mi, _))
   }
 
   private def revertMigration(mid: MigrationInfoWithDowns): EFreeDbAction[Unit] = {
-    for {
-      _ <- applyScripts(mid.downs.reverse, Down)
-      _ <- removeDowns(mid.mi.hash)
-      _ <- remove(mid.mi.hash)
-    } yield ()
+    applyScripts(mid.downs.reverse, Down) >> removeDowns(mid.mi.hash) >> remove(mid.mi.hash)
   }
 
   private def applyScripts(ss: Seq[Script], direction: Direction): EFreeDbAction[Unit] = {
-    for {
-      _ <- sequence(ss.map(s => applyScript(s, direction)))
-    } yield ()
+    ss.toList.traverse_(s => applyScript(s, direction))
   }
 
   private def applyMigrations(mhs: Seq[(Migration, Seq[Byte])], latestCommon: Option[Seq[Byte]]): EFreeDbAction[Unit] = {
-    for {
-      _ <- sequence(migrationsToApply(mhs, latestCommon).map {
-        case (m, h) => applyMigration(m, h)
-      })
-    } yield ()
+    migrationsToApply(mhs, latestCommon).toList.traverse_ {
+      case (m, h) => applyMigration(m, h)
+    }
   }
 
   private def migrationsToApply(mhs: Seq[(Migration, Seq[Byte])], latestCommon: Option[Seq[Byte]]): Seq[(Migration, Seq[Byte])] = {
     mhs.reverse.takeWhile(mh => !latestCommon.exists(_ == mh._2)).reverse
   }
 
-  private def applyGroup(g: Group): EWFreeDbAction[Unit] = {
-    val ups = g.ups
-    val downs = g.downs
-
-    val go: EFreeDbAction[Unit] =
-      for (_ <- sequence(ups.map(up => applyScript(up, Up)))) yield ()
-
-    EWFreeDbAction(WriterT.putWith[FreeDbAction, List[Script], SE[Unit]](go.run)(_.fold(f => Nil, _ => downs.toList)))
+  private def applyGroup(group: Group): EWFreeDbAction[Unit] = {
+    def apl(up: Script): EWFreeDbAction[Unit] = {
+      EWFreeDbAction(WriterT.put[FreeDbAction, UpMoveState, SE[Unit]](applyScript(up, Up).run)(upApplied(up)))
+    }
+    group.ups.toList.traverse_(apl)
   }
 
   private def applyMigration(m: Migration, hash: Seq[Byte]): EFreeDbAction[Unit] = {
 
-    def finalize(downs: List[Script], hash: Seq[Byte]): EFreeDbAction[Unit] =
-      for {
-        _ <- addDowns(hash, downs)
-        _ <- add(MigrationInfo(name = m.name, hash = hash, dateTime = now))
-      } yield ()
-
+    def finalize(downs: List[Script], hash: Seq[Byte]): EFreeDbAction[Unit] = {
+      addDowns(hash, downs) >> add(MigrationInfo(name = m.name, hash = hash, dateTime = now))
+    }
 
     val go: FreeDbAction[SE[Unit]] =
       for {
-        gs <- wSequence(m.groups.map(applyGroup)).run.run
-        r <- gs match {
-          case (downs, -\/(f)) => {
-            for {
-              _ <- finalize(downs, failHash(f))
-              _ <- failure(f)
-            } yield ()
-          }.run
-          case (downs, \/-(_)) => finalize(downs, hash).run
-        }
+        gs <- m.groups.toList.traverse_(applyGroup).run.run
+        r <- (gs match {
+          case (ums, -\/(f)) => finalize(ums.downsToApply, failHash(f)) >> failure(f)
+          case (ums, \/-(_)) => finalize(ums.downsToApply, hash)
+        }).run
       } yield r
 
     EFreeDbAction(go)
