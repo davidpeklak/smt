@@ -8,6 +8,13 @@ object EitherTWriterT {
   type EitherTWriterT[F[+_], A, B, W] = EitherT[({type λ[+α] = WriterT[F, W, α]})#λ, A, B]
 
   trait EitherTWriterTOps[F[+_], A, B, W] extends Ops[EitherTWriterT[F, A, B, W]] {
+    def :\/++>[WW >: W](lw: => WW, rw: => WW)(implicit F: Functor[F], W: Semigroup[WW]): EitherTWriterT[F, A, B, WW] = {
+      EitherT[({type λ[+α] = WriterT[F, WW, α]})#λ, A, B](self.run :++>> {
+        case -\/(_) => lw
+        case \/-(_) => rw
+      })
+    }
+
     def :\/-++>[WW >: W](w: => WW)(implicit F: Functor[F], W: Monoid[WW]): EitherTWriterT[F, A, B, WW] = {
       EitherT[({type λ[+α] = WriterT[F, WW, α]})#λ, A, B](self.run :++>> {
         case -\/(_) => W.zero

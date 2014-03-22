@@ -3,7 +3,7 @@ package smt
 import org.scalatest.FunSuite
 import MigrationGen._
 import org.scalacheck.Gen
-import scalaz.Free
+import scalaz.{-\/, Free}
 
 class DbHandlingTest extends FunSuite with PropTesting {
 
@@ -85,7 +85,12 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val action = DBHandling.applyMigration(mig, MigrationHandling.hashMigration(mig, None))
 
-    FreeDbAction.run(action)(db)
+    val r: DbAction.SE[Unit] = FreeDbAction.run(action)(db)
+
+    r match {
+      case -\/(f) => println(f)
+      case _ => ()
+    }
 
     assert(db.scriptSeq === Seq(good(1), good(2), good(5), bad))
     assert(db.downss.size === 1)

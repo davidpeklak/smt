@@ -123,7 +123,7 @@ object DBHandling {
 
   private def applyGroup(group: Group): EWFreeDbAction[Unit] = {
     def apl(up: Script): EWFreeDbAction[Unit] = {
-      val go = WriterT.putWith(applyScript(up, Up).run){
+      val go = WriterT.putWith(applyScript(up, Up).run) {
         case -\/(_) => crashedUp(up)
         case \/-(_) => appliedUp(up)
       }
@@ -131,11 +131,23 @@ object DBHandling {
       EWFreeDbAction(go)
     }
 
-    group.ups.toList.traverse_(apl) :\/-++> downsToApply(group.downs.toList)
+    group.ups.toList.traverse_(apl) :\/-++> (downsToApply(group.downs.toList) ⊹ appliedUpsWithDowns(group.ups.toList))
   }
 
-  private def describe(ums: UpMoveState, f: String): String = {
-    "UpMoveState: " + ums + "\nFailure: " + f
+  private def describe(migName: String, ums: UpMoveState, f: String): String = {
+    import ums._
+    val upsWithoutDowns = appliedUpsWithDowns.map(Some(_)).zipAll(appliedUps.map(Some(_)), None, None)
+      .dropWhile(t => t._1 == t._2).map(_._2.toSeq).flatten
+
+    "Failed to fully apply migration " + migName + " \n" +
+      "Applied the following up scripts: \n" +
+      ums.appliedUps.mkString("\n") + "\n" +
+      "The following up script crashed: \n" +
+      ums.crashedUp.getOrElse("(None)") + "\n" +
+      "Because of: " + f.toString + "\n" +
+      "The following up scripts have been applied without recording corresponding down scripts,\n" +
+      "revert them manually before continuing:" + "\n" +
+      upsWithoutDowns.map(_.name).mkString("\n")
   }
 
   def applyMigration(m: Migration, hash: Seq[Byte]): EFreeDbAction[Unit] = {
@@ -148,7 +160,7 @@ object DBHandling {
       for {
         gs <- m.groups.toList.traverse_(applyGroup).run.run
         r <- (gs match {
-          case (ums, -\/(f)) => finalize(ums.downsToApply, failHash(f)) >> failure(describe(ums, f))
+          case (ums, -\/(f)) => finalize(ums.downsToApply, failHash(f)) >> failure(describe(m.name, ums, f))
           case (ums, \/-(_)) => finalize(ums.downsToApply, hash)
         }).run
       } yield r
