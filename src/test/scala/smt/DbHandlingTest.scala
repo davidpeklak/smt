@@ -53,4 +53,42 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     assert(db.addCount === 10000)
   }
+
+  test("apply one migration that fails") {
+    class ScriptRecordingDbMock extends DatabaseMock {
+      var scriptSeq: Seq[Script] = Seq()
+      var downss: Seq[(Seq[Byte], Seq[Script])] = Seq()
+
+      override def applyScript(script: Script, direction: Direction): (Option[Failure], Database) = {
+        scriptSeq = scriptSeq :+ script
+        if (script.content.contains("bad")) (Some("BAD"), this)
+        else (None, this)
+      }
+
+      override def addDowns(migHash: Seq[Byte], downs: Seq[Script]): (Option[Failure], Database) = {
+        downss = downss :+ (migHash, downs)
+        (None, this)
+      }
+
+    }
+
+    def good(i: Int) = Script("good" + i.toString, "good")
+    val bad = Script("bad", "bad")
+
+    val mig = Migration("mig1", Seq(
+      Group(Seq(good(1), good(2)), Seq(good(3), good(4))),
+      Group(Seq(good(5), bad), Seq(good(6), good(7))),
+      Group(Seq(good(8), good(9)), Seq(good(10), good(11)))
+    ))
+
+    val db = new ScriptRecordingDbMock
+
+    val action = DBHandling.applyMigration(mig, MigrationHandling.hashMigration(mig, None))
+
+    FreeDbAction.run(action)(db)
+
+    assert(db.scriptSeq === Seq(good(1), good(2), good(5), bad))
+    assert(db.downss.size === 1)
+    assert(db.downss(0)._2 === Seq(good(3), good(4)))
+  }
 }

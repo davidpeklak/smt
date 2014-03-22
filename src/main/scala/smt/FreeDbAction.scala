@@ -44,6 +44,8 @@ object FreeDbAction {
   type EWFreeDbAction[+A] = EitherT[WFreeDbAction, String, A]
   def EWFreeDbAction[A](wa: WFreeDbAction[SE[A]]) = EitherT[WFreeDbAction, String, A](wa)
 
+  val EWSyntax = EitherTWriterT.eitherTWriterTSyntax[FreeDbAction, String, UpMoveState]
+
   type EA[+A] = Either[String, A]
 
   def eit[A](ea: EA[A]): SE[A] = ea match {

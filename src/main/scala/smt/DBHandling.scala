@@ -50,6 +50,8 @@ object DBHandling {
 
   import FreeDbAction._
 
+  import EWSyntax._
+
   def now: Date = new Date
 
   case class Common(db: MigrationInfo, currentName: String) {
@@ -121,12 +123,22 @@ object DBHandling {
 
   private def applyGroup(group: Group): EWFreeDbAction[Unit] = {
     def apl(up: Script): EWFreeDbAction[Unit] = {
-      EWFreeDbAction(WriterT.put[FreeDbAction, UpMoveState, SE[Unit]](applyScript(up, Up).run)(upApplied(up)))
+      val go = WriterT.putWith(applyScript(up, Up).run){
+        case -\/(_) => crashedUp(up)
+        case \/-(_) => appliedUp(up)
+      }
+
+      EWFreeDbAction(go)
     }
-    group.ups.toList.traverse_(apl)
+
+    group.ups.toList.traverse_(apl) :\/-++> downsToApply(group.downs.toList)
   }
 
-  private def applyMigration(m: Migration, hash: Seq[Byte]): EFreeDbAction[Unit] = {
+  private def describe(ums: UpMoveState, f: String): String = {
+    "UpMoveState: " + ums + "\nFailure: " + f
+  }
+
+  def applyMigration(m: Migration, hash: Seq[Byte]): EFreeDbAction[Unit] = {
 
     def finalize(downs: List[Script], hash: Seq[Byte]): EFreeDbAction[Unit] = {
       addDowns(hash, downs) >> add(MigrationInfo(name = m.name, hash = hash, dateTime = now))
@@ -136,7 +148,7 @@ object DBHandling {
       for {
         gs <- m.groups.toList.traverse_(applyGroup).run.run
         r <- (gs match {
-          case (ums, -\/(f)) => finalize(ums.downsToApply, failHash(f)) >> failure(f)
+          case (ums, -\/(f)) => finalize(ums.downsToApply, failHash(f)) >> failure(describe(ums, f))
           case (ums, \/-(_)) => finalize(ums.downsToApply, hash)
         }).run
       } yield r

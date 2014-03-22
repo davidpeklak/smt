@@ -21,5 +21,9 @@ object UpMoveState {
     def zero: UpMoveState = UpMoveState()
   }
 
-  def upApplied(up: Script): UpMoveState = UpMoveState(appliedUps = List(up))
+  def appliedUp(up: Script): UpMoveState = UpMoveState(appliedUps = List(up))
+
+  def crashedUp(up: Script): UpMoveState = UpMoveState(crashedUp = Some(up))
+
+  def downsToApply(downs: List[Script]): UpMoveState = UpMoveState(downsToApply = downs)
 }
