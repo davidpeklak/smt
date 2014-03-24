@@ -34,6 +34,11 @@ class TestDatabase extends Database {
     }
 
 
+  def testScript(script: Script): (Option[TestDatabase#Failure], Database) =  {
+    println("applying test " + script)
+    (None, this)
+  }
+
   private var s: Seq[MigrationInfo] = Nil
 
   private var ds: Map[Seq[Byte], Seq[Script]] = Map()

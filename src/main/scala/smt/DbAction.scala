@@ -22,5 +22,7 @@ object DbAction {
 
   case class ApplyScript(script: Script, direction: Direction) extends DbAction[SE[Unit]]
 
+  case class DoTest(test: Test) extends DbAction[SE[Unit]]
+
   case class Failure(f: String) extends DbAction[SE[Nothing]]
 }

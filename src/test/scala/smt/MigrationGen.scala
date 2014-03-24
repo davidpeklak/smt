@@ -9,7 +9,7 @@ object MigrationGen {
       name <- alphaStr
       numberOfGroups <- choose(1, 10)
       groups <- listOfN(numberOfGroups, groupGen)
-    } yield Migration(name, groups)
+    } yield Migration(name, groups, Seq())
   }
 
   def groupGen: Gen[Group] = {

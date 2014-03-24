@@ -36,6 +36,8 @@ object FreeDbAction {
 
   def applyScript(script: Script, direction: Direction): EFreeDbAction[Unit] = ereq(ApplyScript(script, direction))
 
+  def doTest(test: Test): EFreeDbAction[Unit] = ereq(DoTest(test))
+
   def failure(f: String): EFreeDbAction[Nothing] = ereq(Failure(f))
 
   type WFreeDbAction[+A] = WriterT[FreeDbAction, UpMoveState, A]
@@ -62,6 +64,7 @@ object FreeDbAction {
       case Remove(hash) => eit(db.remove(hash)._1.toLeft(())).asInstanceOf[T]
       case RemoveDowns(migHash) => eit(db.removeDowns(migHash)._1.toLeft(())).asInstanceOf[T]
       case ApplyScript(script, direction) => eit(db.applyScript(script, direction)._1.toLeft(())).asInstanceOf[T]
+      case DoTest(test) => eit(test.run(db)).asInstanceOf[T]
       case Failure(f) => eit(Left(f)).asInstanceOf[T]
     }
   }

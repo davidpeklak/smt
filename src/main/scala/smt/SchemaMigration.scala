@@ -51,14 +51,22 @@ import ScriptParsers._
  */
 object SchemaMigration {
   def apply(name: String, dir: File): Migration = {
-    apply(name, Seq(dir), OneFileOneScriptParser)
+    apply(name, Seq(dir), Seq(), OneFileOneScriptParser)
   }
 
   def apply(name: String, dirs: Seq[File]): Migration = {
-    apply(name, dirs, OneFileOneScriptParser)
+    apply(name, dirs, Seq(), OneFileOneScriptParser)
   }
 
-  def apply(name: String, dirs: Seq[File], scriptParser: File => Seq[Script]): Migration = {
+  def apply(name: String, dir: File, tests: Seq[Test]): Migration = {
+    apply(name, Seq(dir), tests, OneFileOneScriptParser)
+  }
+
+  def apply(name: String, dirs: Seq[File], tests: Seq[Test]): Migration = {
+    apply(name, dirs, tests, OneFileOneScriptParser)
+  }
+
+  def apply(name: String, dirs: Seq[File], tests: Seq[Test], scriptParser: File => Seq[Script]): Migration = {
     IO.assertDirectories(dirs: _*)
 
     def checkDirectory(file: File): Option[File] = {
@@ -105,17 +113,25 @@ object SchemaMigration {
         group <- upsAndDowns(subdir)
       } yield group
 
-    Migration(name = name, groups = groups)
+    Migration(name = name, groups = groups, tests = tests)
   }
 }
 
 object SepSchemaMigration {
   def apply(sep: String, name: String, dir: File): Migration = {
-    SchemaMigration(name, Seq(dir), OneFileManyScriptsParser("\n" + sep))
+    SchemaMigration(name, Seq(dir), Seq(), OneFileManyScriptsParser("\n" + sep))
   }
 
   def apply(sep: String, name: String, dirs: Seq[File]): Migration = {
-    SchemaMigration(name, dirs, OneFileManyScriptsParser("\n" + sep))
+    SchemaMigration(name, dirs, Seq(), OneFileManyScriptsParser("\n" + sep))
+  }
+
+  def apply(sep: String, name: String, dir: File, tests: Seq[Test]): Migration = {
+    SchemaMigration(name, Seq(dir), tests, OneFileManyScriptsParser("\n" + sep))
+  }
+
+  def apply(sep: String, name: String, dirs: Seq[File], tests: Seq[Test]): Migration = {
+    SchemaMigration(name, dirs, tests, OneFileManyScriptsParser("\n" + sep))
   }
 }
 

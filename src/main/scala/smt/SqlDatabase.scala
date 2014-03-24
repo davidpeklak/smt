@@ -120,6 +120,12 @@ abstract class SqlDatabase(connection: => JConnection) extends Database {
     withStatement(cnx)(_.execute(script.content))
   }
 
+
+  def testScript(script: Script): (Option[SqlDatabase#Failure], Database) = effectExceptionToFailure {
+    println("applying test script: " + script)
+    withStatement(cnx)(_.execute(script.content))
+  }
+
   def state: Either[Failure, Seq[MigrationInfo]] = exceptionToFailure(withStatement(cnx)(st => {
     mapResultSet(st.executeQuery(queryMigrationTableString))(rs => {
       (MigrationInfo(

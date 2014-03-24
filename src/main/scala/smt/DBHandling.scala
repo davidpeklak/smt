@@ -113,8 +113,12 @@ object DBHandling {
 
   private def applyMigrations(mhs: Seq[(Migration, Seq[Byte])], latestCommon: Option[Seq[Byte]]): EFreeDbAction[Unit] = {
     migrationsToApply(mhs, latestCommon).toList.traverse_ {
-      case (m, h) => applyMigration(m, h)
+      case (m, h) => applyMigration(m, h) >> testMigration(m)
     }
+  }
+
+  private def testMigration(m: Migration): EFreeDbAction[Unit] = {
+    m.tests.toList.traverse_ (doTest)
   }
 
   private def migrationsToApply(mhs: Seq[(Migration, Seq[Byte])], latestCommon: Option[Seq[Byte]]): Seq[(Migration, Seq[Byte])] = {

@@ -27,6 +27,8 @@ class DbHandlingTest extends FunSuite with PropTesting {
     def removeDowns(migHash: Seq[Byte]): (Option[Failure], Database) = (None, this)
 
     def applyScript(script: Script, direction: Direction): (Option[Failure], Database) = (None, this)
+
+    def testScript(script: Script): (Option[Failure], Database) = (None, this)
   }
 
   test("apply one migration - smoke") {
@@ -79,7 +81,7 @@ class DbHandlingTest extends FunSuite with PropTesting {
       Group(Seq(good(1), good(2)), Seq(good(3), good(4))),
       Group(Seq(good(5), bad), Seq(good(6), good(7))),
       Group(Seq(good(8), good(9)), Seq(good(10), good(11)))
-    ))
+    ), Seq())
 
     val db = new ScriptRecordingDbMock
 
