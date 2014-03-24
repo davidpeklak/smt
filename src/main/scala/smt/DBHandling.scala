@@ -37,8 +37,8 @@ trait DBHandling {
     result.swap.foreach(failException(s))
   }
 
-  protected def applyMigrationsImpl(db: Database, ms: Seq[Migration], arb: Boolean, s: TaskStreams): Unit = {
-    val action = applyMigrationsImplAction(ms, arb)
+  protected def applyMigrationsImpl(db: Database, ms: Seq[Migration], arb: Boolean, runTests: Boolean, s: TaskStreams): Unit = {
+    val action = applyMigrationsImplAction(ms, arb, runTests)
     val result = run(action)(db)
     result.swap.foreach(failException(s))
   }
@@ -72,12 +72,12 @@ object DBHandling {
     state.map(latestCommon2(_, mhs))
   }
 
-  def applyMigrationsImplAction(ms: Seq[Migration], arb: Boolean): EFreeDbAction[Unit] = {
+  def applyMigrationsImplAction(ms: Seq[Migration], arb: Boolean, runTests: Boolean): EFreeDbAction[Unit] = {
     val mhs = ms zip hashMigrations(ms)
 
     for (lcho <- latestCommon(mhs).map(_.map(_.db.hash));
          _ <- revertToLatestCommon(lcho, arb);
-         _ <- applyMigrations(mhs, lcho))
+         _ <- applyMigrations(mhs, lcho, runTests))
     yield ()
   }
 
@@ -111,9 +111,11 @@ object DBHandling {
     ss.toList.traverse_(s => applyScript(s, direction))
   }
 
-  private def applyMigrations(mhs: Seq[(Migration, Seq[Byte])], latestCommon: Option[Seq[Byte]]): EFreeDbAction[Unit] = {
+  private def applyMigrations(mhs: Seq[(Migration, Seq[Byte])], latestCommon: Option[Seq[Byte]], runTests: Boolean): EFreeDbAction[Unit] = {
     migrationsToApply(mhs, latestCommon).toList.traverse_ {
-      case (m, h) => applyMigration(m, h) >> testMigration(m)
+      case (m, h) =>
+        if (runTests) applyMigration(m, h) >> testMigration(m)
+        else applyMigration(m, h)
     }
   }
 

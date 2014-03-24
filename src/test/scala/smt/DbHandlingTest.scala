@@ -35,7 +35,7 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val mig = migGen.apply(Gen.Params()).get // bochn
 
-    val action = DBHandling.applyMigrationsImplAction(ms = Seq(mig), arb = false)
+    val action = DBHandling.applyMigrationsImplAction(ms = Seq(mig), arb = false, runTests = true)
 
     FreeDbAction.run(action)(new DatabaseMock)
   }
@@ -45,7 +45,7 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val mig = migGen.apply(Gen.Params()).get // bochn
 
-    val action = DBHandling.applyMigrationsImplAction(ms = Seq.fill(10000)(mig), arb = false)
+    val action = DBHandling.applyMigrationsImplAction(ms = Seq.fill(10000)(mig), arb = false, runTests = true)
 
     import FreeDbAction._
 
