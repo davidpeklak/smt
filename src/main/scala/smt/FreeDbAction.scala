@@ -16,6 +16,7 @@ object FreeDbAction {
   type FreeDbAction[+A] = Free[DbActionFreeFunctor, A]
 
   type EFreeDbAction[+A] = EitherT[FreeDbAction, String, A]
+
   def EFreeDbAction[A](a: FreeDbAction[SE[A]]) = EitherT[FreeDbAction, String, A](a)
 
   private def req[A](dba: DbAction[A]): FreeDbAction[A] = request[DbAction, A](dba)
@@ -40,13 +41,18 @@ object FreeDbAction {
 
   def failure(f: String): EFreeDbAction[Nothing] = ereq(Failure(f))
 
-  type WFreeDbAction[+A] = WriterT[FreeDbAction, UpMoveState, A]
-  def WFreeDbAction[A](t: FreeDbAction[(UpMoveState, A)]) = WriterT[FreeDbAction, UpMoveState, A](t)
+  trait WriterTypes[S] {
 
-  type EWFreeDbAction[+A] = EitherT[WFreeDbAction, String, A]
-  def EWFreeDbAction[A](wa: WFreeDbAction[SE[A]]) = EitherT[WFreeDbAction, String, A](wa)
+    type WFreeDbAction[+A] = WriterT[FreeDbAction, S, A]
 
-  val EWSyntax = EitherTWriterT.eitherTWriterTSyntax[FreeDbAction, String, UpMoveState]
+    type EWFreeDbAction[+A] = EitherT[WFreeDbAction, String, A]
+
+    def EWFreeDbAction[A](wa: WFreeDbAction[SE[A]]) = EitherT[WFreeDbAction, String, A](wa)
+
+    val EWSyntax = EitherTWriterT.eitherTWriterTSyntax[FreeDbAction, String, S]
+  }
+
+  def writerTypes[S]: WriterTypes[S] = new WriterTypes[S] {}
 
   type EA[+A] = Either[String, A]
 

@@ -50,7 +50,9 @@ object DBHandling {
 
   import FreeDbAction._
 
-  import EWSyntax._
+  val upMoveTypes = writerTypes[UpMoveState]
+
+  val downMoveTypes = writerTypes[DownMoveState]
 
   def now: Date = new Date
 
@@ -104,6 +106,10 @@ object DBHandling {
   }
 
   private def revertMigration(mid: MigrationInfoWithDowns): EFreeDbAction[Unit] = {
+    // def remDo(down: Script): EWFreeDbAction[Unit]
+
+    // removeDowns(mid.mi.hash) >> remove(mid.mi.hash)
+
     applyScripts(mid.downs.reverse, Down) >> removeDowns(mid.mi.hash) >> remove(mid.mi.hash)
   }
 
@@ -120,22 +126,25 @@ object DBHandling {
   }
 
   private def testMigration(m: Migration): EFreeDbAction[Unit] = {
-    m.tests.toList.traverse_ (doTest)
+    m.tests.toList.traverse_(doTest)
   }
 
   private def migrationsToApply(mhs: Seq[(Migration, Seq[Byte])], latestCommon: Option[Seq[Byte]]): Seq[(Migration, Seq[Byte])] = {
     mhs.reverse.takeWhile(mh => !latestCommon.exists(_ == mh._2)).reverse
   }
 
-  private def applyGroup(group: Group): EWFreeDbAction[Unit] = {
-    def apl(up: Script): EWFreeDbAction[Unit] = {
+  private def applyGroup(group: Group): upMoveTypes.EWFreeDbAction[Unit] = {
+
+    def apl(up: Script): upMoveTypes.EWFreeDbAction[Unit] = {
       val go = WriterT.putWith(applyScript(up, Up).run) {
         case -\/(_) => crashedUp(up)
         case \/-(_) => appliedUp(up)
       }
 
-      EWFreeDbAction(go)
+      upMoveTypes.EWFreeDbAction(go)
     }
+
+    import upMoveTypes.EWSyntax._
 
     group.ups.toList.traverse_(apl) :\/-++> (downsToApply(group.downs.toList) ⊹ appliedUpsWithDowns(group.ups.toList))
   }
