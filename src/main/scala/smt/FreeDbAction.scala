@@ -4,6 +4,7 @@ import scalaz._
 import scalaz.std.list._
 import scalaz.std.function._
 import UpMoveState._
+import scalaz.Free.Return
 
 object FreeDbAction {
 
@@ -22,6 +23,8 @@ object FreeDbAction {
   private def req[A](dba: DbAction[A]): FreeDbAction[A] = request[DbAction, A](dba)
 
   private def ereq[A](dba: DbAction[SE[A]]): EFreeDbAction[A] = EFreeDbAction(req(dba))
+
+  def point[A](a: A): EFreeDbAction[A] = EFreeDbAction(Return(\/-(a)))
 
   def state: EFreeDbAction[Seq[MigrationInfo]] = ereq(State)
 

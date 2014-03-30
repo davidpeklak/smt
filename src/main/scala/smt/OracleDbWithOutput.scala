@@ -4,9 +4,7 @@ import java.sql.{Connection => JConnection, _}
 
 class OracleDbWithOutput(connection: => JConnection) extends OracleDatabase(connection) {
 
-  override def applyScript(script: Script, direction: Direction): (Option[Failure], Database) = effectExceptionToFailure {
-    println("applying " + direction + " script: " + script)
-
+  private def doApplyScript(script: Script) {
     withStatement(cnx)(_.execute("begin dbms_output.enable(1000000); end;"))
 
     withStatement(cnx)(_.execute(script.content))
@@ -38,5 +36,15 @@ class OracleDbWithOutput(connection: => JConnection) extends OracleDatabase(conn
     })
 
     withStatement(cnx)(_.execute("begin dbms_output.disable; end;"))
+  }
+
+  override def applyScript(script: Script, direction: Direction): (Option[Failure], Database) = effectExceptionToFailure {
+    println("applying " + direction + " script: " + script)
+    doApplyScript(script)
+  }
+
+  override def testScript(script: Script): (Option[SqlDatabase#Failure], Database) = effectExceptionToFailure {
+    println("applying test script: " + script)
+    doApplyScript(script)
   }
 }

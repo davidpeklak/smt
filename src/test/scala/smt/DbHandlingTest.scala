@@ -4,6 +4,8 @@ import org.scalatest.FunSuite
 import MigrationGen._
 import org.scalacheck.Gen
 import scalaz.{-\/, Free}
+import java.util.Date
+import smt.DBHandling.MigrationInfoWithDowns
 
 class DbHandlingTest extends FunSuite with PropTesting {
 
@@ -56,27 +58,70 @@ class DbHandlingTest extends FunSuite with PropTesting {
     assert(db.addCount === 10000)
   }
 
-  test("apply one migration that fails") {
-    class ScriptRecordingDbMock extends DatabaseMock {
-      var scriptSeq: Seq[Script] = Seq()
-      var downss: Seq[(Seq[Byte], Seq[Script])] = Seq()
+  class ScriptRecordingDbMock extends DatabaseMock {
+    var upScriptSeq: Seq[Script] = Seq()
+    var downScriptSeq: Seq[Script] = Seq()
+    var testScriptSeq: Seq[Script] = Seq()
+    var downss: Seq[(Seq[Byte], Seq[Script])] = Seq()
 
-      override def applyScript(script: Script, direction: Direction): (Option[Failure], Database) = {
-        scriptSeq = scriptSeq :+ script
-        if (script.content.contains("bad")) (Some("BAD"), this)
-        else (None, this)
-      }
-
-      override def addDowns(migHash: Seq[Byte], downs: Seq[Script]): (Option[Failure], Database) = {
-        downss = downss :+ (migHash, downs)
-        (None, this)
-      }
-
+    override def applyScript(script: Script, direction: Direction): (Option[Failure], Database) = {
+      if (direction == Up) upScriptSeq = upScriptSeq :+ script
+      else downScriptSeq = downScriptSeq :+ script
+      if (script.content.contains("bad")) (Some("BAD"), this)
+      else (None, this)
     }
 
-    def good(i: Int) = Script("good" + i.toString, "good")
-    val bad = Script("bad", "bad")
 
+    override def testScript(script: Script): (Option[ScriptRecordingDbMock#Failure], Database) = {
+      testScriptSeq = testScriptSeq :+ script
+      if (script.content.contains("bad")) (Some("BAD"), this)
+      else (None, this)
+    }
+
+    override def addDowns(migHash: Seq[Byte], downs: Seq[Script]): (Option[Failure], Database) = {
+      downss = downss :+ (migHash, downs)
+      (None, this)
+    }
+
+  }
+
+  test("apply one migration with test") {
+    val testScript = Script("test", "testScript")
+
+    val test: Test = ScriptTest.scriptTest(testScript)
+
+    val mig = migGen.map(_.copy(tests = Seq(test))).apply(Gen.Params()).get // bochn
+
+    val action = DBHandling.applyMigrationsImplAction(ms = Seq(mig), arb = false, runTests = true)
+
+    val db = new ScriptRecordingDbMock
+
+    FreeDbAction.run(action)(db)
+
+    assert(db.testScriptSeq.size === 1)
+    assert(db.testScriptSeq(0) === testScript)
+  }
+
+  test("apply one migration with test - but don't run tests") {
+    val testScript = Script("test", "testScript")
+
+    val test: Test = ScriptTest.scriptTest(testScript)
+
+    val mig = migGen.map(_.copy(tests = Seq(test))).apply(Gen.Params()).get // bochn
+
+    val action = DBHandling.applyMigrationsImplAction(ms = Seq(mig), arb = false, runTests = false)
+
+    val db = new ScriptRecordingDbMock
+
+    FreeDbAction.run(action)(db)
+
+    assert(db.testScriptSeq.size === 0)
+  }
+
+  def good(i: Int) = Script("good" + i.toString, "good")
+  val bad = Script("bad", "bad")
+
+  test("apply one migration that fails") {
     val mig = Migration("mig1", Seq(
       Group(Seq(good(1), good(2)), Seq(good(3), good(4))),
       Group(Seq(good(5), bad), Seq(good(6), good(7))),
@@ -94,8 +139,28 @@ class DbHandlingTest extends FunSuite with PropTesting {
       case _ => ()
     }
 
-    assert(db.scriptSeq === Seq(good(1), good(2), good(5), bad))
+    assert(db.upScriptSeq === Seq(good(1), good(2), good(5), bad))
     assert(db.downss.size === 1)
     assert(db.downss(0)._2 === Seq(good(3), good(4)))
+  }
+  
+  test("revert one migration that fails") {
+    val downs = Seq(good(1), good(2), bad, good(3), good(4))
+    val migInfo = MigrationInfo("migName", Seq[Byte](), new Date)
+
+    val db = new ScriptRecordingDbMock
+
+    val action = DBHandling.revertMigration(MigrationInfoWithDowns(migInfo, downs))
+
+    val r: DbAction.SE[Unit] = FreeDbAction.run(action)(db)
+
+    r match {
+      case -\/(f) => println(f)
+      case _ => ()
+    }
+
+    assert(db.downScriptSeq === Seq(good(4), good(3), bad))
+    assert(db.downss.size === 1)
+    assert(db.downss(0)._2 === Seq(good(1), good(2)))
   }
 }

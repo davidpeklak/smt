@@ -3,15 +3,10 @@ package smt
 import java.io.File
 import ScriptParsers._
 
-trait Test {
-  def run: Database => Either[String, Unit]
-}
+case class Test (run: Database => Either[String, Unit])
 
 object ScriptTest {
-  private def scriptTest(script: Script): Test = new Test {
-
-    val run: Database => Either[String, Unit] = db => db.testScript(script)._1.toLeft(())
-  }
+  def scriptTest(script: Script): Test = Test(db => db.testScript(script)._1.toLeft(()))
 
   def apply(file: File): Seq[Test] = OneFileOneScriptParser(file).map(scriptTest)
 
