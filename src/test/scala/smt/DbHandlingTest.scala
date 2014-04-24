@@ -33,14 +33,14 @@ class DbHandlingTest extends FunSuite with PropTesting {
     def testScript(script: Script): (Option[Failure], Database) = (None, this)
   }
 
-  test("apply one migration - smoke") {
+  /*test("apply one migration - smoke") {
 
     val mig = migGen.apply(Gen.Params()).get // bochn
 
     val action = DBHandling.applyMigrationsImplAction(ms = Seq(mig), arb = false, runTests = true)
 
-    FreeDbAction.run(action)(new DatabaseMock)
-  }
+    action.run(new DatabaseMock).run
+  }*/
 
 
   test("apply 10000 migrations fea - smoke") {
@@ -49,11 +49,11 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val action = DBHandling.applyMigrationsImplAction(ms = Seq.fill(10000)(mig), arb = false, runTests = true)
 
-    import FreeDbAction._
+    import DbAction._
 
     val db = new DatabaseMock
 
-    FreeDbAction.run(action)(db)
+    action.run(db).run
 
     assert(db.addCount === 10000)
   }
@@ -96,7 +96,7 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val db = new ScriptRecordingDbMock
 
-    FreeDbAction.run(action)(db)
+    action.run(db).run
 
     assert(db.testScriptSeq.size === 1)
     assert(db.testScriptSeq(0) === testScript)
@@ -113,7 +113,7 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val db = new ScriptRecordingDbMock
 
-    FreeDbAction.run(action)(db)
+    action.run(db).run
 
     assert(db.testScriptSeq.size === 0)
   }
@@ -132,7 +132,7 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val action = DBHandling.applyMigration(mig, MigrationHandling.hashMigration(mig, None))
 
-    val r: DbAction.SE[Unit] = FreeDbAction.run(action)(db)
+    val r: DbAction.SE[Unit] = action.run(db).run
 
     r match {
       case -\/(f) => println(f)
@@ -152,7 +152,7 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val action = DBHandling.revertMigration(MigrationInfoWithDowns(migInfo, downs))
 
-    val r: DbAction.SE[Unit] = FreeDbAction.run(action)(db)
+    val r: DbAction.SE[Unit] = action.run(db).run
 
     r match {
       case -\/(f) => println(f)

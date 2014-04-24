@@ -1,28 +1,64 @@
 package smt
 
-import scalaz.\/
-
-sealed trait DbAction[+R]
+import scalaz._
+import scalaz.std.list._
+import scalaz.std.function._
+import UpMoveState._
+import scalaz.concurrent.Future
 
 object DbAction {
 
   type SE[A] = (String \/ A)
 
-  case object State extends DbAction[SE[Seq[MigrationInfo]]]
+  type DbKleisli[+A] = Kleisli[Future, Database, A]
 
-  case class Downs(hash: Seq[Byte]) extends DbAction[SE[Seq[Script]]]
+  def DbKleisli[A](f: Database => A): DbKleisli[A] = Kleisli[Future, Database, A](db => Future.delay(f(db)))
 
-  case class Add(migrationInfo: MigrationInfo) extends DbAction[SE[Unit]]
+  type EDbKleisli[+A] = EitherT[DbKleisli, String, A]
 
-  case class AddDowns(migHash: Seq[Byte], downs: Seq[Script]) extends DbAction[SE[Unit]]
+  def EDbKleisli[A](a: DbKleisli[SE[A]]) = EitherT[DbKleisli, String, A](a)
 
-  case class Remove(hash: Seq[Byte]) extends DbAction[SE[Unit]]
+  def eit[A](ea: EA[A]): SE[A] = ea match {
+    case Left(s) => -\/(s)
+    case Right(a) => \/-(a)
+  }
 
-  case class RemoveDowns(migHash: Seq[Byte]) extends DbAction[SE[Unit]]
+  def point[A](a: A): EDbKleisli[A] = EDbKleisli(Kleisli[Future, Database, SE[A]](db => Future.delay(\/-(a))))
 
-  case class ApplyScript(script: Script, direction: Direction) extends DbAction[SE[Unit]]
+  private def edbk[A](f: Database => EA[A]): EDbKleisli[A] = EDbKleisli(DbKleisli(f andThen eit))
 
-  case class DoTest(test: Test) extends DbAction[SE[Unit]]
+  private def eudbk[A](f: Database => (Option[String], Database)): EDbKleisli[Unit] = EDbKleisli(DbKleisli(db => eit(f(db)._1.toLeft(()))))
 
-  case class Failure(f: String) extends DbAction[SE[Nothing]]
+  def state: EDbKleisli[Seq[MigrationInfo]] = edbk(_.state)
+
+  def downs(hash: Seq[Byte]): EDbKleisli[Seq[Script]] = edbk(_.downs(hash))
+
+  def add(migrationInfo: MigrationInfo): EDbKleisli[Unit] = eudbk(_.add(migrationInfo))
+
+  def addDowns(migHash: Seq[Byte], downs: Seq[Script]): EDbKleisli[Unit] = eudbk(_.addDowns(migHash, downs))
+
+  def remove(hash: Seq[Byte]): EDbKleisli[Unit] = eudbk(_.remove(hash))
+
+  def removeDowns(migHash: Seq[Byte]): EDbKleisli[Unit] = eudbk(_.removeDowns(migHash))
+
+  def applyScript(script: Script, direction: Direction): EDbKleisli[Unit] = eudbk(_.applyScript(script, direction))
+
+  def doTest(test: Test): EDbKleisli[Unit] = edbk(db => test.run(db))
+
+  def failure(f: String): EDbKleisli[Nothing] = EDbKleisli(DbKleisli(_ => -\/(f)))
+
+  trait WriterTypes[S] {
+
+    type WDbKleisli[+A] = WriterT[DbKleisli, S, A]
+
+    type EWDbKleisli[+A] = EitherT[WDbKleisli, String, A]
+
+    def EWDbKleisli[A](wa: WDbKleisli[SE[A]]) = EitherT[WDbKleisli, String, A](wa)
+
+    val EWSyntax = EitherTWriterT.eitherTWriterTSyntax[DbKleisli, String, S]
+  }
+
+  def writerTypes[S]: WriterTypes[S] = new WriterTypes[S] {}
+
+  type EA[+A] = Either[String, A]
 }

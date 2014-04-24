@@ -4,7 +4,6 @@ import sbt._
 import sbt.Keys._
 import java.util.Date
 import smt.Util._
-import smt.DbAction.SE
 import UpMoveState._
 import DownMoveState._
 import scalaz._
@@ -12,11 +11,12 @@ import scalaz.syntax.std.option._
 import scalaz.syntax.std.list._
 import scalaz.\/-
 import scalaz.Scalaz._
+import TraverseStackSafeSyntax._
 
 trait DBHandling {
 
   import MigrationHandling._
-  import FreeDbAction._
+  import DbAction._
   import DBHandling._
 
   private def failException(s: TaskStreams)(e: String) {
@@ -25,14 +25,14 @@ trait DBHandling {
   }
 
   protected def showDbStateImpl(db: Database, s: TaskStreams): Unit = {
-    val result = run(state)(db)
+    val result = state.run(db).run
 
     result.foreach(_.foreach(st => s.log.info(st.toString)))
     result.swap.foreach(failException(s))
   }
 
   protected def showLatestCommonImpl(db: Database, ms: Seq[Migration], s: TaskStreams): Unit = {
-    val result = run(latestCommon(ms zip hashMigrations(ms)))(db)
+    val result = latestCommon(ms zip hashMigrations(ms)).run(db).run
 
     result.foreach(lco => s.log.info(lco.map(_.toString).getOrElse("None")))
     result.swap.foreach(failException(s))
@@ -40,7 +40,7 @@ trait DBHandling {
 
   protected def applyMigrationsImpl(db: Database, ms: Seq[Migration], arb: Boolean, runTests: Boolean, s: TaskStreams): Unit = {
     val action = applyMigrationsImplAction(ms, arb, runTests)
-    val result = run(action)(db)
+    val result = action.run(db).run
     result.swap.foreach(failException(s))
   }
 }
@@ -49,7 +49,7 @@ object DBHandling {
 
   import MigrationHandling._
 
-  import FreeDbAction._
+  import DbAction._
 
   val upMoveTypes = writerTypes[UpMoveState]
 
@@ -98,11 +98,11 @@ object DBHandling {
     }
   }
 
-  private def latestCommon(mhs: Seq[(Migration, Seq[Byte])]): EFreeDbAction[Option[Common]] = {
+  private def latestCommon(mhs: Seq[(Migration, Seq[Byte])]): EDbKleisli[Option[Common]] = {
     state.map(latestCommon2(_, mhs))
   }
 
-  def applyMigrationsImplAction(ms: Seq[Migration], arb: Boolean, runTests: Boolean): EFreeDbAction[Unit] = {
+  def applyMigrationsImplAction(ms: Seq[Migration], arb: Boolean, runTests: Boolean): EDbKleisli[Unit] = {
     val mhs = ms zip hashMigrations(ms)
 
     for (lcho <- latestCommon(mhs).map(_.map(_.db.hash));
@@ -113,7 +113,7 @@ object DBHandling {
 
   case class MigrationInfoWithDowns(mi: MigrationInfo, downs: Seq[Script])
 
-  private def revertToLatestCommon(latestCommon: Option[Seq[Byte]], arb: Boolean): EFreeDbAction[Unit] = {
+  private def revertToLatestCommon(latestCommon: Option[Seq[Byte]], arb: Boolean): EDbKleisli[Unit] = {
     for {
       mis <- migrationsToRevert(latestCommon)
       mids <- mis.toList.traverse(enrichMigrationWithDowns)
@@ -125,96 +125,96 @@ object DBHandling {
 
   }
 
-  private def migrationsToRevert(latestCommon: Option[Seq[Byte]]): EFreeDbAction[Seq[MigrationInfo]] = {
+  private def migrationsToRevert(latestCommon: Option[Seq[Byte]]): EDbKleisli[Seq[MigrationInfo]] = {
     state.map(_.reverse.takeWhile(mi => !latestCommon.exists(_ == mi.hash)))
   }
 
-  private def enrichMigrationWithDowns(mi: MigrationInfo): EFreeDbAction[MigrationInfoWithDowns] = {
+  private def enrichMigrationWithDowns(mi: MigrationInfo): EDbKleisli[MigrationInfoWithDowns] = {
     downs(mi.hash).map(MigrationInfoWithDowns(mi, _))
   }
 
-  def revertMigration(mid: MigrationInfoWithDowns): EFreeDbAction[Unit] = {
+  def revertMigration(mid: MigrationInfoWithDowns): EDbKleisli[Unit] = {
     import downMoveTypes._
 
-    def apl(down: Script): EWFreeDbAction[Unit] = {
+    def apl(down: Script): EWDbKleisli[Unit] = {
       val go = WriterT.putWith(applyScript(down, Down).run) {
         case -\/(_) => crashedDown(down)
         case \/-(_) => appliedDown(down)
       }
 
-      EWFreeDbAction(go)
+      EWDbKleisli(go)
     }
 
-    def rewriteMigration(dms: DownMoveState, hash: Seq[Byte]): EFreeDbAction[Unit] = {
+    def rewriteMigration(dms: DownMoveState, hash: Seq[Byte]): EDbKleisli[Unit] = {
       val downsToWrite = mid.downs.reverse.map(Some(_)).zipAll(dms.appliedDowns.map(Some(_)) :+ dms.crashedDown, None, None)
         .dropWhile(t => t._1 == t._2).map(_._1.toSeq).flatten.reverse
 
       addDowns(hash, downsToWrite) >> add(MigrationInfo(name = mid.mi.name, hash = hash, dateTime = now))
     }
 
-    val go: FreeDbAction[SE[Unit]] =
+    val go: DbKleisli[SE[Unit]] =
       for {
-        ds <- mid.downs.reverse.toList.traverse_(apl).run.run
+        ds <- mid.downs.reverse.toList.traverse__(apl).run.run
         r <- (ds match {
           case (dms, -\/(f)) => rewriteMigration(dms, failHash(f)) >> failure(describe(mid.mi.name, dms, f))
           case (dms, \/-(_)) => point(())
         }).run
       } yield r
 
-    removeDowns(mid.mi.hash) >> remove(mid.mi.hash) >> EFreeDbAction(go)
+    removeDowns(mid.mi.hash) >> remove(mid.mi.hash) >> EDbKleisli(go)
   }
 
-  private def applyScripts(ss: Seq[Script], direction: Direction): EFreeDbAction[Unit] = {
-    ss.toList.traverse_(s => applyScript(s, direction))
+  private def applyScripts(ss: Seq[Script], direction: Direction): EDbKleisli[Unit] = {
+    ss.toList.traverse__(s => applyScript(s, direction))
   }
 
-  private def applyMigrations(mhs: Seq[(Migration, Seq[Byte])], latestCommon: Option[Seq[Byte]], runTests: Boolean): EFreeDbAction[Unit] = {
-    migrationsToApply(mhs, latestCommon).toList.traverse_ {
+  private def applyMigrations(mhs: Seq[(Migration, Seq[Byte])], latestCommon: Option[Seq[Byte]], runTests: Boolean): EDbKleisli[Unit] = {
+    migrationsToApply(mhs, latestCommon).toList.traverse__ {
       case (m, h) =>
         if (runTests) applyMigration(m, h) >> testMigration(m)
         else applyMigration(m, h)
     }
   }
 
-  private def testMigration(m: Migration): EFreeDbAction[Unit] = {
-    m.tests.toList.traverse_(doTest)
+  private def testMigration(m: Migration): EDbKleisli[Unit] = {
+    m.tests.toList.traverse__(doTest)
   }
 
   private def migrationsToApply(mhs: Seq[(Migration, Seq[Byte])], latestCommon: Option[Seq[Byte]]): Seq[(Migration, Seq[Byte])] = {
     mhs.reverse.takeWhile(mh => !latestCommon.exists(_ == mh._2)).reverse
   }
 
-  private def applyGroup(group: Group): upMoveTypes.EWFreeDbAction[Unit] = {
+  private def applyGroup(group: Group): upMoveTypes.EWDbKleisli[Unit] = {
 
-    def apl(up: Script): upMoveTypes.EWFreeDbAction[Unit] = {
+    def apl(up: Script): upMoveTypes.EWDbKleisli[Unit] = {
       val go = WriterT.putWith(applyScript(up, Up).run) {
         case -\/(_) => crashedUp(up)
         case \/-(_) => appliedUp(up)
       }
 
-      upMoveTypes.EWFreeDbAction(go)
+      upMoveTypes.EWDbKleisli(go)
     }
 
     import upMoveTypes.EWSyntax._
 
-    group.ups.toList.traverse_(apl) :\/-++> (downsToApply(group.downs.toList) ⊹ appliedUpsWithDowns(group.ups.toList))
+    group.ups.toList.traverse__(apl) :\/-++> (downsToApply(group.downs.toList) ⊹ appliedUpsWithDowns(group.ups.toList))
   }
 
-  def applyMigration(m: Migration, hash: Seq[Byte]): EFreeDbAction[Unit] = {
+  def applyMigration(m: Migration, hash: Seq[Byte]): EDbKleisli[Unit] = {
 
-    def finalize(downs: List[Script], hash: Seq[Byte]): EFreeDbAction[Unit] = {
+    def finalize(downs: List[Script], hash: Seq[Byte]): EDbKleisli[Unit] = {
       addDowns(hash, downs) >> add(MigrationInfo(name = m.name, hash = hash, dateTime = now))
     }
 
-    val go: FreeDbAction[SE[Unit]] =
+    val go: DbKleisli[SE[Unit]] =
       for {
-        gs <- m.groups.toList.traverse_(applyGroup).run.run
+        gs <- m.groups.toList.traverse__(applyGroup).run.run
         r <- (gs match {
           case (ums, -\/(f)) => finalize(ums.downsToApply, failHash(f)) >> failure(describe(m.name, ums, f))
           case (ums, \/-(_)) => finalize(ums.downsToApply, hash)
         }).run
       } yield r
 
-    EFreeDbAction(go)
+    EDbKleisli(go)
   }
 }
