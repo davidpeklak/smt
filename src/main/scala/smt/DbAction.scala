@@ -47,15 +47,24 @@ object DbAction {
 
   def failure(f: String): EDbKleisli[Nothing] = EDbKleisli(DbKleisli(_ => -\/(f)))
 
-  trait WriterTypes[S] {
+  trait WriterTypes[W] {
 
-    type WDbKleisli[+A] = WriterT[DbKleisli, S, A]
+    type WDbKleisli[+A] = WriterT[DbKleisli, W, A]
+    
+    def WDbKleisli[A](a: DbKleisli[(W, A)]): WDbKleisli[A] = WriterT[DbKleisli, W, A](a)
 
     type EWDbKleisli[+A] = EitherT[WDbKleisli, String, A]
 
     def EWDbKleisli[A](wa: WDbKleisli[SE[A]]) = EitherT[WDbKleisli, String, A](wa)
 
-    val EWSyntax = EitherTWriterT.eitherTWriterTSyntax[DbKleisli, String, S]
+    def lift[A](dbKleisli: DbKleisli[A])(implicit W: Monoid[W]): WDbKleisli[A] = WriterT.writerTMonadTrans[W].liftM(dbKleisli)
+
+    def liftE[A](edbKleisli: EDbKleisli[A])(implicit W: Monoid[W]): EWDbKleisli[A] = EWDbKleisli(lift(edbKleisli.run))
+    
+    def putE[A](edbKleisli: EDbKleisli[A])(w: W): EWDbKleisli[A] = EitherT[WDbKleisli, String, A](WriterT.put(edbKleisli.run)(w))
+
+
+    val EWSyntax = EitherTWriterT.eitherTWriterTSyntax[DbKleisli, String, W]
   }
 
   def writerTypes[S]: WriterTypes[S] = new WriterTypes[S] {}

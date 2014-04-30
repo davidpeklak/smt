@@ -6,6 +6,7 @@ import java.util.Date
 import smt.Util._
 import UpMoveState._
 import DownMoveState._
+import NamedMoveStates._
 import scalaz._
 import scalaz.syntax.std.option._
 import scalaz.syntax.std.list._
@@ -40,8 +41,8 @@ trait DBHandling {
 
   protected def applyMigrationsImpl(db: Database, ms: Seq[Migration], arb: Boolean, runTests: Boolean, s: TaskStreams): Unit = {
     val action = applyMigrationsImplAction(ms, arb, runTests)
-    val result = action.run(db).run
-    result.swap.foreach(failException(s))
+    val result = action.run.run(db).run
+    result._2.swap.foreach(failException(s))
   }
 }
 
@@ -54,6 +55,8 @@ object DBHandling {
   val upMoveTypes = writerTypes[UpMoveState]
 
   val downMoveTypes = writerTypes[DownMoveState]
+
+  val namedMoveTypes = writerTypes[NamedMoveStates]
 
   def now: Date = new Date
 
@@ -102,24 +105,30 @@ object DBHandling {
     state.map(latestCommon2(_, mhs))
   }
 
-  def applyMigrationsImplAction(ms: Seq[Migration], arb: Boolean, runTests: Boolean): EDbKleisli[Unit] = {
+  def applyMigrationsImplAction(ms: Seq[Migration], arb: Boolean, runTests: Boolean): namedMoveTypes.EWDbKleisli[Unit] = {
+    import namedMoveTypes._
+
     val mhs = ms zip hashMigrations(ms)
 
-    for (lcho <- latestCommon(mhs).map(_.map(_.db.hash));
-         _ <- revertToLatestCommon(lcho, arb);
-         _ <- applyMigrations(mhs, lcho, runTests))
-    yield ()
+    for {
+      lcho <- liftE(latestCommon(mhs).map(_.map(_.db.hash)))
+      _ <- revertToLatestCommon(lcho, arb)
+      _ <- applyMigrations(mhs, lcho, runTests)
+    } yield ()
   }
 
   case class MigrationInfoWithDowns(mi: MigrationInfo, downs: Seq[Script])
 
-  private def revertToLatestCommon(latestCommon: Option[Seq[Byte]], arb: Boolean): EDbKleisli[Unit] = {
+  private def revertToLatestCommon(latestCommon: Option[Seq[Byte]], arb: Boolean): namedMoveTypes.EWDbKleisli[Unit] = {
+    import namedMoveTypes._
+    import downMoveTypes.EWSyntax._
+
     for {
-      mis <- migrationsToRevert(latestCommon)
-      mids <- mis.toList.traverse(enrichMigrationWithDowns)
+      mis <- liftE(migrationsToRevert(latestCommon))
+      mids <- liftE(mis.toList.traverse(enrichMigrationWithDowns))
       _ <- {
-        if (mids.isEmpty || arb) mids.toList.traverse(revertMigration)
-        else failure("Will not roll back migrations " + mids.map(_.mi.name).mkString(", ") + ", because allow-rollback is set to false")
+        if (mids.isEmpty || arb) mids.toList.traverse[EWDbKleisli, Unit]((mid: MigrationInfoWithDowns) => revertMigration(mid).mapWritten(namedMoveState(mid.mi.name)))
+        else liftE(failure("Will not roll back migrations " + mids.map(_.mi.name).mkString(", ") + ", because allow-rollback is set to false"))
       }
     } yield ()
 
@@ -133,10 +142,11 @@ object DBHandling {
     downs(mi.hash).map(MigrationInfoWithDowns(mi, _))
   }
 
-  def revertMigration(mid: MigrationInfoWithDowns): EDbKleisli[Unit] = {
+  def revertMigration(mid: MigrationInfoWithDowns): downMoveTypes.EWDbKleisli[Unit] = {
     import downMoveTypes._
+    import EWSyntax._
 
-    def apl(down: Script): EWDbKleisli[Unit] = {
+    def applyScriptAndWrite(down: Script): EWDbKleisli[Unit] = {
       val go = WriterT.putWith(applyScript(down, Down).run) {
         case -\/(_) => crashedDown(down)
         case \/-(_) => appliedDown(down)
@@ -152,27 +162,27 @@ object DBHandling {
       addDowns(hash, downsToWrite) >> add(MigrationInfo(name = mid.mi.name, hash = hash, dateTime = now))
     }
 
-    val go: DbKleisli[SE[Unit]] =
-      for {
-        ds <- mid.downs.reverse.toList.traverse__(apl).run.run
-        r <- (ds match {
-          case (dms, -\/(f)) => rewriteMigration(dms, failHash(f)) >> failure(describe(mid.mi.name, dms, f))
-          case (dms, \/-(_)) => point(())
-        }).run
-      } yield r
-
-    removeDowns(mid.mi.hash) >> remove(mid.mi.hash) >> EDbKleisli(go)
+    liftE(removeDowns(mid.mi.hash) >> remove(mid.mi.hash)) >>
+      mid.downs.reverse.toList.traverse__(applyScriptAndWrite).recover((dms, f) => {
+        liftE(rewriteMigration(dms, failHash(f)) >> failure(describe(mid.mi.name, dms, f)))
+      })
   }
 
   private def applyScripts(ss: Seq[Script], direction: Direction): EDbKleisli[Unit] = {
     ss.toList.traverse__(s => applyScript(s, direction))
   }
 
-  private def applyMigrations(mhs: Seq[(Migration, Seq[Byte])], latestCommon: Option[Seq[Byte]], runTests: Boolean): EDbKleisli[Unit] = {
+  private def applyMigrations(mhs: Seq[(Migration, Seq[Byte])], latestCommon: Option[Seq[Byte]], runTests: Boolean): namedMoveTypes.EWDbKleisli[Unit] = {
+    import namedMoveTypes._
+    import upMoveTypes.EWSyntax._
+
     migrationsToApply(mhs, latestCommon).toList.traverse__ {
       case (m, h) =>
-        if (runTests) applyMigration(m, h) >> testMigration(m)
-        else applyMigration(m, h)
+        if (runTests) for {
+          _ <- applyMigration(m, h).mapWritten(namedMoveState(m.name))
+          _ <- liftE(testMigration(m))
+        } yield ()
+        else applyMigration(m, h).mapWritten(namedMoveState(m.name))
     }
   }
 
@@ -200,21 +210,18 @@ object DBHandling {
     group.ups.toList.traverse__(apl) :\/-++> (downsToApply(group.downs.toList) ⊹ appliedUpsWithDowns(group.ups.toList))
   }
 
-  def applyMigration(m: Migration, hash: Seq[Byte]): EDbKleisli[Unit] = {
+  def applyMigration(m: Migration, hash: Seq[Byte]): upMoveTypes.EWDbKleisli[Unit] = {
+    import upMoveTypes._
+    import EWSyntax._
 
     def finalize(downs: List[Script], hash: Seq[Byte]): EDbKleisli[Unit] = {
       addDowns(hash, downs) >> add(MigrationInfo(name = m.name, hash = hash, dateTime = now))
     }
 
-    val go: DbKleisli[SE[Unit]] =
-      for {
-        gs <- m.groups.toList.traverse__(applyGroup).run.run
-        r <- (gs match {
-          case (ums, -\/(f)) => finalize(ums.downsToApply, failHash(f)) >> failure(describe(m.name, ums, f))
-          case (ums, \/-(_)) => finalize(ums.downsToApply, hash)
-        }).run
-      } yield r
-
-    EDbKleisli(go)
+    m.groups.toList.traverse__(applyGroup).conclude {
+      (ums, f) => liftE(finalize(ums.downsToApply, failHash(f)) >> failure(describe(m.name, ums, f)))
+    } {
+      (ums, _) => liftE(finalize(ums.downsToApply, hash))
+    }
   }
 }

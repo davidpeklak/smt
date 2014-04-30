@@ -53,7 +53,7 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val db = new DatabaseMock
 
-    action.run(db).run
+    action.run.run(db).run
 
     assert(db.addCount === 10000)
   }
@@ -96,7 +96,7 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val db = new ScriptRecordingDbMock
 
-    action.run(db).run
+    action.run.run(db).run
 
     assert(db.testScriptSeq.size === 1)
     assert(db.testScriptSeq(0) === testScript)
@@ -113,7 +113,7 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val db = new ScriptRecordingDbMock
 
-    action.run(db).run
+    action.run.run(db).run
 
     assert(db.testScriptSeq.size === 0)
   }
@@ -132,9 +132,9 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val action = DBHandling.applyMigration(mig, MigrationHandling.hashMigration(mig, None))
 
-    val r: DbAction.SE[Unit] = action.run(db).run
+    val r: (UpMoveState, DbAction.SE[Unit]) = action.run.run(db).run
 
-    r match {
+    r._2 match {
       case -\/(f) => println(f)
       case _ => ()
     }
@@ -152,9 +152,9 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val action = DBHandling.revertMigration(MigrationInfoWithDowns(migInfo, downs))
 
-    val r: DbAction.SE[Unit] = action.run(db).run
+    val r: (DownMoveState, DbAction.SE[Unit]) = action.run.run(db).run
 
-    r match {
+    r._2 match {
       case -\/(f) => println(f)
       case _ => ()
     }

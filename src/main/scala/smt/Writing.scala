@@ -68,5 +68,5 @@ object NamedMoveStates {
     def zero: NamedMoveStates = NamedMoveStates(Nil)
   }
   
-  def namedMoveState(name: String, ms: MoveState): NamedMoveStates = NamedMoveStates(List((name, ms)))
+  def namedMoveState(name: String)(ms: MoveState): NamedMoveStates = NamedMoveStates(List((name, ms)))
 }
