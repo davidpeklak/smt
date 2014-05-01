@@ -7,6 +7,8 @@ import smt.migration.{Script, MigrationInfo, Direction, Test}
 
 object DbAction {
 
+  type EA[+A] = Either[String, A]
+
   type SE[A] = (String \/ A)
 
   type DbKleisli[+A] = Kleisli[Future, Database, A]
@@ -67,6 +69,4 @@ object DbAction {
   }
 
   def writerTypes[S]: WriterTypes[S] = new WriterTypes[S] {}
-
-  type EA[+A] = Either[String, A]
 }

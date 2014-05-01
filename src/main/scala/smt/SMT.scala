@@ -5,11 +5,11 @@ import sbt.Keys._
 import java.io.File
 import smt.db.Database
 import smt.migration.Migration
+import smt.report.Reporter
 
-object SMT extends Plugin with DBHandling {
+object SMT extends Plugin {
 
   import MigrationHandling._
-
 
   lazy val globalSmtSettings = Seq(
     migrationsSource <<= (sourceDirectory in Compile) / "migrations",
@@ -20,10 +20,11 @@ object SMT extends Plugin with DBHandling {
   lazy val smtSettings = Seq(
     transformedMigrations <<= (migrations, transformations) map transformedMigrationsImpl,
     showHashes <<= (transformedMigrations, streams) map showHashesImpl,
-    showDbState <<= (database, streams) map showDbStateImpl,
-    applyMigrations <<= (database, transformedMigrations, allowRollback, runTests, streams) map applyMigrationsImpl,
-    migrateTo <<= inputTask((argTask: TaskKey[Seq[String]]) => (argTask, database, transformedMigrations, allowRollback, runTests, streams) map migrateToImpl),
-    showLatestCommon <<= (database, transformedMigrations, streams) map showLatestCommonImpl
+    showDbState <<= (database, streams) map SMTImpl.showDbState,
+    applyMigrations <<= (database, transformedMigrations, allowRollback, runTests, reporters, streams) map SMTImpl.applyMigrations,
+    migrateTo <<= inputTask((argTask: TaskKey[Seq[String]]) => (argTask, database, transformedMigrations, allowRollback, runTests, reporters, streams) map SMTImpl.migrateTo),
+    showLatestCommon <<= (database, transformedMigrations, streams) map SMTImpl.showLatestCommon,
+    reporters := Seq[Reporter]()
   )
 
   val migrationsSource = SettingKey[File]("migrations-source", "base-directory for migration files")
@@ -50,17 +51,5 @@ object SMT extends Plugin with DBHandling {
 
   val migrateTo = InputKey[Unit]("migrate-to", "move db to the specified migration")
 
-  private def migrateToImpl(args: Seq[String], db: Database, ms: Seq[Migration], arb: Boolean, runTests: Boolean, s: TaskStreams) {
-    args match {
-      case Seq(target) => {
-        val mst = ms.reverse.dropWhile(_.name != target).reverse
-        if (mst.isEmpty) throw new Exception("No migration named '" + target + "' defined")
-        else {
-          SMT.applyMigrationsImpl(db, mst, arb, runTests, s)
-        }
-      }
-      case Seq() => throw new Exception("Name of a migration expected.")
-      case _ => throw new Exception("Too many arguments. Name of a migration expected.")
-    }
-  }
+  val reporters = SettingKey[Seq[Reporter]]("reporters", "sequence of reporters to notify about db changes")
 }

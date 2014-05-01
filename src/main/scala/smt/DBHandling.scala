@@ -14,7 +14,7 @@ import scalaz.\/-
 import scalaz.Scalaz._
 import smt.util.TraverseStackSafeSyntax
 import TraverseStackSafeSyntax._
-import smt.db.{DbAction, Database}
+import smt.db.DbAction
 import smt.migration._
 import smt.migration.Group
 import scalaz.\/-
@@ -23,37 +23,6 @@ import scalaz.-\/
 import migration.MigrationInfo
 import migration.Script
 
-trait DBHandling {
-
-  import MigrationHandling._
-  import DbAction._
-  import DBHandling._
-
-  private def failException(s: TaskStreams)(e: String) {
-    s.log.error(e)
-    throw new Exception(e)
-  }
-
-  protected def showDbStateImpl(db: Database, s: TaskStreams): Unit = {
-    val result = state.run(db).run
-
-    result.foreach(_.foreach(st => s.log.info(st.toString)))
-    result.swap.foreach(failException(s))
-  }
-
-  protected def showLatestCommonImpl(db: Database, ms: Seq[Migration], s: TaskStreams): Unit = {
-    val result = latestCommon(ms zip hashMigrations(ms)).run(db).run
-
-    result.foreach(lco => s.log.info(lco.map(_.toString).getOrElse("None")))
-    result.swap.foreach(failException(s))
-  }
-
-  protected def applyMigrationsImpl(db: Database, ms: Seq[Migration], arb: Boolean, runTests: Boolean, s: TaskStreams): Unit = {
-    val action = applyMigrationsImplAction(ms, arb, runTests)
-    val result = action.run.run(db).run
-    result._2.swap.foreach(failException(s))
-  }
-}
 
 object DBHandling {
 
@@ -110,11 +79,11 @@ object DBHandling {
     }
   }
 
-  private def latestCommon(mhs: Seq[(Migration, Seq[Byte])]): EDbKleisli[Option[Common]] = {
+  def latestCommon(mhs: Seq[(Migration, Seq[Byte])]): EDbKleisli[Option[Common]] = {
     state.map(latestCommon2(_, mhs))
   }
 
-  def applyMigrationsImplAction(ms: Seq[Migration], arb: Boolean, runTests: Boolean): namedMoveTypes.EWDbKleisli[Unit] = {
+  def applyMigrations(ms: Seq[Migration], arb: Boolean, runTests: Boolean): namedMoveTypes.EWDbKleisli[Unit] = {
     import namedMoveTypes._
 
     val mhs = ms zip hashMigrations(ms)
