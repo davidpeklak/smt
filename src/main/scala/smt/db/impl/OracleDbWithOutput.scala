@@ -1,6 +1,8 @@
-package smt
+package smt.db.impl
 
-import java.sql.{Connection => JConnection, _}
+import java.sql.{Connection => JConnection}
+import smt.db.Database
+import smt.migration.{Script, Direction}
 
 class OracleDbWithOutput(connection: => JConnection) extends OracleDatabase(connection) {
 

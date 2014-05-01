@@ -2,6 +2,7 @@ package smt
 
 import scalaz.{Scalaz, Monoid}
 import Scalaz._
+import smt.migration.Script
 
 sealed trait Writing
 

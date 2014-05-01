@@ -1,10 +1,13 @@
-package smt
+package smt.db.impl
 
 import java.sql.{Connection => JConnection, _}
 import java.util.Date
-import util.control.Exception.{Catcher, catching, allCatcher}
+import scala.util.control.Exception.{Catcher, catching, allCatcher}
+import smt.util.Util
 import Util._
 import collection.Map.empty
+import smt.db.Database
+import smt.migration.{Script, MigrationInfo, Direction}
 
 abstract class SqlDatabase(connection: => JConnection) extends Database {
   sqlDatabase =>

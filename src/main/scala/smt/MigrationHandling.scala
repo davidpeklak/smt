@@ -2,7 +2,9 @@ package smt
 
 import sbt.Keys._
 import java.security.MessageDigest
+import smt.util.Util
 import Util._
+import smt.migration.{Script, Migration}
 
 object MigrationHandling {
   type Transformation = String => String

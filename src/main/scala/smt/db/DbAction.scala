@@ -1,10 +1,9 @@
-package smt
+package smt.db
 
 import scalaz._
-import scalaz.std.list._
-import scalaz.std.function._
-import UpMoveState._
 import scalaz.concurrent.Future
+import smt.util.EitherTWriterT
+import smt.migration.{Script, MigrationInfo, Direction, Test}
 
 object DbAction {
 

@@ -1,7 +1,6 @@
-package smt
+package smt.util
 
 import java.sql.ResultSet
-import scala.io.Codec
 import collection.immutable.Stream.Empty
 
 object Util {

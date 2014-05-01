@@ -7,6 +7,7 @@ import MigrationGen._
 import smt.MigrationHandling._
 import GenUtil._
 import org.scalatest.FunSuite
+import smt.migration.Migration
 
 class MigrationHandlingTest extends FunSuite with PropTesting {
 

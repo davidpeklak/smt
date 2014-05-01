@@ -1,6 +1,9 @@
-package smt
+package smt.db.impl
 
+import smt.util.Util
 import Util._
+import smt.db.Database
+import smt.migration.{Script, MigrationInfo, Direction}
 
 class TestDatabase extends Database {
 

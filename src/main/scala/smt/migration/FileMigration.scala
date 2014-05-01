@@ -1,8 +1,7 @@
-package smt
+package smt.migration
 
-import java.io.File
 import sbt._
-import smt.Util._
+import smt.util.Util._
 
 object FileMigration {
   def apply(name: String, scripts: Seq[File], tests: Seq[Test]): Migration = {

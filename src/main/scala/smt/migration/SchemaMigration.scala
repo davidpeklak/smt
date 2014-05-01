@@ -1,4 +1,4 @@
-package smt
+package smt.migration
 
 import sbt._
 import ScriptParsers._

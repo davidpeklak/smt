@@ -1,8 +1,8 @@
-package smt
+package smt.migration
 
 import sbt._
-import smt.Util._
 import scala.annotation.tailrec
+import smt.util.Util._
 
 object ScriptParsers {
 

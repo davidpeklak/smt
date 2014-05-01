@@ -1,4 +1,4 @@
-package smt
+package smt.util
 
 import scalaz.syntax.Ops
 import scalaz.{Traverse, Applicative}

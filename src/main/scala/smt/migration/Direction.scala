@@ -1,4 +1,4 @@
-package smt
+package smt.migration
 
 sealed trait Direction
 

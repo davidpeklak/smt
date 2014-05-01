@@ -1,6 +1,7 @@
-package smt
+package smt.migration
 
 import java.io.File
+import smt.db.Database
 import ScriptParsers._
 
 case class Test (run: Database => Either[String, Unit])

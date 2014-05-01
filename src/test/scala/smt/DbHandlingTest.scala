@@ -3,9 +3,14 @@ package smt
 import org.scalatest.FunSuite
 import MigrationGen._
 import org.scalacheck.Gen
-import scalaz.{-\/, Free}
 import java.util.Date
+import smt.db.{DbAction, Database}
+import smt.migration._
+import smt.migration.Group
+import scalaz.-\/
 import smt.DBHandling.MigrationInfoWithDowns
+import smt.migration.Test
+import smt.migration.Migration
 
 class DbHandlingTest extends FunSuite with PropTesting {
 
@@ -33,15 +38,14 @@ class DbHandlingTest extends FunSuite with PropTesting {
     def testScript(script: Script): (Option[Failure], Database) = (None, this)
   }
 
-  /*test("apply one migration - smoke") {
+  test("apply one migration - smoke") {
 
     val mig = migGen.apply(Gen.Params()).get // bochn
 
     val action = DBHandling.applyMigrationsImplAction(ms = Seq(mig), arb = false, runTests = true)
 
-    action.run(new DatabaseMock).run
-  }*/
-
+    action.run.run(new DatabaseMock).run
+  }
 
   test("apply 10000 migrations fea - smoke") {
 

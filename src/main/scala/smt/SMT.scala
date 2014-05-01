@@ -3,6 +3,8 @@ package smt
 import sbt._
 import sbt.Keys._
 import java.io.File
+import smt.db.Database
+import smt.migration.Migration
 
 object SMT extends Plugin with DBHandling {
 

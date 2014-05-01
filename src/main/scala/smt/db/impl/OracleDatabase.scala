@@ -1,4 +1,4 @@
-package smt
+package smt.db.impl
 
 import java.sql.{Connection => JConnection, _}
 import scala.util.control.Exception._

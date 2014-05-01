@@ -1,4 +1,6 @@
-package smt
+package smt.db
+
+import smt.migration.{Script, MigrationInfo, Direction}
 
 trait Database {
 

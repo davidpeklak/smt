@@ -2,6 +2,7 @@ package smt
 
 import org.scalacheck.Gen
 import org.scalacheck.Gen._
+import smt.migration.{Script, Migration, Group}
 
 object MigrationGen {
   def migGen: Gen[Migration] = {

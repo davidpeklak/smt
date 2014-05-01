@@ -3,6 +3,7 @@ package smt
 import org.scalatest.FunSuite
 import org.scalacheck.Gen._
 import org.scalacheck.Prop.forAll
+import smt.migration.ScriptParsers
 
 class ScriptParsersTest extends FunSuite with PropTesting {
   test("splitString") {

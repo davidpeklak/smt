@@ -3,7 +3,7 @@ package smt
 import sbt._
 import sbt.Keys._
 import java.util.Date
-import smt.Util._
+import util.Util._
 import UpMoveState._
 import DownMoveState._
 import NamedMoveStates._
@@ -12,7 +12,16 @@ import scalaz.syntax.std.option._
 import scalaz.syntax.std.list._
 import scalaz.\/-
 import scalaz.Scalaz._
+import smt.util.TraverseStackSafeSyntax
 import TraverseStackSafeSyntax._
+import smt.db.{DbAction, Database}
+import smt.migration._
+import smt.migration.Group
+import scalaz.\/-
+import smt.migration.Migration
+import scalaz.-\/
+import migration.MigrationInfo
+import migration.Script
 
 trait DBHandling {
 
