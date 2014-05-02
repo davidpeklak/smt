@@ -80,12 +80,12 @@ object SchemaMigration {
     def upsAndDowns(dir: File): Seq[Group] = {
       val up = dir / "up"
       IO.assertDirectory(up)
-      val upFiles = up.listFiles.toSeq
+      val upFiles = listFilesAlphabetically(up)
       val upFileNames = upFiles.map(_.getName)
 
       val down = dir / "down"
       IO.assertDirectory(down)
-      val downFiles = down.listFiles.toSeq
+      val downFiles = listFilesAlphabetically(down)
       val downFileNames = downFiles.map(_.getName)
 
       if (upFileNames != downFileNames) {
@@ -101,6 +101,10 @@ object SchemaMigration {
       }
 
       groups
+    }
+
+    def listFilesAlphabetically(dir: File): Seq[File] = {
+      dir.listFiles.toSeq.sortBy(_.getName)
     }
 
     val subdirNames = Seq("table", "function", "package", "procedure", "view", "other")

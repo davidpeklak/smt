@@ -2,7 +2,6 @@ package smt
 
 import smt.db.{Database, DbAction}
 import sbt.Keys._
-import smt.db.DbAction._
 import smt.migration.Migration
 import report.Reporter
 
@@ -29,7 +28,7 @@ object SMTImpl {
 
   def applyMigrations(db: Database, ms: Seq[Migration], arb: Boolean, runTests: Boolean, rs: Seq[Reporter], s: TaskStreams): Unit = {
     val action = Handling.applyMigrationsAndReport(ms, arb, runTests)
-    val dep = Handling.Dep(db, rs.toList)
+    val dep = HandlingDep(db, rs.toList, s.log)
     action.run(dep).run
   }
 

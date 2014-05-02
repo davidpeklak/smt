@@ -2,38 +2,47 @@ package smt
 
 import smt.db.Database
 import smt.report.{ReporterAction, Reporter}
-import scalaz.Kleisli
+import scalaz.{Monad, \/, -\/, Kleisli}
 import scalaz.concurrent.Future
 import smt.migration.Migration
 import scalaz.Scalaz._
+import smt.util.ActionTypes
+import smt.describe.DescribeAction
+import sbt.Logger
 
-object Handling {
+case class HandlingDep(db: Database, rps: List[Reporter], log: Logger)
 
-  type RpsKleisli[+A] = Kleisli[Future, List[Reporter], A]
+object Handling extends ActionTypes[HandlingDep] {
 
-  def RpsKleisli[A](f: List[Reporter] => A): RpsKleisli[A] = Kleisli[Future, List[Reporter], A](rps => Future.delay(f(rps)))
-
-  case class Dep(db: Database, rps: List[Reporter])
-
-  type DepKleisli[A] = Kleisli[Future, Dep, A]
-
-  def applyMigrationsAndReport(ms: Seq[Migration], arb: Boolean, runTests: Boolean): DepKleisli[Unit] = {
+  def applyMigrationsAndReport(ms: Seq[Migration], arb: Boolean, runTests: Boolean): DKleisli[Unit] = {
     for {
-      nms <- {
+      nmse <- {
         DBHandling.applyMigrations(ms, arb, runTests)
-          .run.written
-          .local[Dep](_.db)
+          .run.run
+          .local[HandlingDep](_.db)
+      }
+
+      (nms, e) = nmse
+
+      _ <- {
+        (nms.actions.lastOption, e) match {
+          case (Some(ms), -\/(f)) => {
+            DescribeAction.describe(ms._1, ms._2, f)
+              .local[HandlingDep](_.log)
+          }
+          case _ => point(())
+        }
       }
 
       _ <- {
         reportToAll(nms)
-          .local[Dep](_.rps)
+          .local[HandlingDep](_.rps)
 
       }
     } yield ()
   }
 
-  def reportToAll(nms: NamedMoveStates): RpsKleisli[Unit] = {
+  def reportToAll(nms: NamedMoveStates): Kleisli[Future, List[Reporter], Unit] = {
     Kleisli[Future, List[Reporter], Unit](_.traverse_(ReporterAction.report(nms).run))
   }
 }

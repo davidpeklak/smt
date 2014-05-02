@@ -1,15 +1,9 @@
 package smt.report
 
-import scalaz._
-import scalaz.concurrent.Future
 import smt.NamedMoveStates
+import smt.util.ActionTypes
 
 
-object ReporterAction {
-
-  type RpKleisli[+A] = Kleisli[Future, Reporter, A]
-
-  def RpKleisli[A](f: Reporter => A): RpKleisli[A] = Kleisli[Future, Reporter, A](db => Future.delay(f(db)))
-
-  def report(nms: NamedMoveStates): RpKleisli[Unit] = RpKleisli(_.report(nms).getOrElse(()))
+object ReporterAction extends ActionTypes[Reporter] {
+  def report(nms: NamedMoveStates): DKleisli[Unit] = DKleisli(_.report(nms).getOrElse(()))
 }

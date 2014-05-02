@@ -14,9 +14,13 @@ trait ActionTypes[D] {
 
   type EDKleisli[+A] = EitherT[DKleisli, String, A]
 
+  // implicit val EDM = Kleisli.kleisliMonadPlus
+
   def EDKleisli[A](a: DKleisli[SE[A]]) = EitherT[DKleisli, String, A](a)
 
-  def point[A](a: A): EDKleisli[A] = EDKleisli(DKleisli(_ => \/-(a)))
+  def point[A](a: A): DKleisli[A] = DKleisli(_ => a)
+
+  def ePoint[A](a: A): EDKleisli[A] = EDKleisli(DKleisli(_ => \/-(a)))
 
   def failure(f: String): EDKleisli[Nothing] = EDKleisli(DKleisli(_ => -\/(f)))
 
