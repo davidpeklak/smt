@@ -1,28 +1,15 @@
 package smt
 
-import sbt._
-import sbt.Keys._
 import java.util.Date
 import util.Util._
 import UpMoveState._
 import DownMoveState._
 import NamedMoveStates._
-import scalaz._
-import scalaz.syntax.std.option._
-import scalaz.syntax.std.list._
-import scalaz.\/-
 import scalaz.Scalaz._
 import smt.util.TraverseStackSafeSyntax
 import TraverseStackSafeSyntax._
 import smt.db.DbAction
 import smt.migration._
-import smt.migration.Group
-import scalaz.\/-
-import smt.migration.Migration
-import scalaz.-\/
-import migration.MigrationInfo
-import migration.Script
-
 
 object DBHandling {
 
@@ -79,11 +66,11 @@ object DBHandling {
     }
   }
 
-  def latestCommon(mhs: Seq[(Migration, Seq[Byte])]): EDbKleisli[Option[Common]] = {
+  def latestCommon(mhs: Seq[(Migration, Seq[Byte])]): EDKleisli[Option[Common]] = {
     state.map(latestCommon2(_, mhs))
   }
 
-  def applyMigrations(ms: Seq[Migration], arb: Boolean, runTests: Boolean): namedMoveTypes.EWDbKleisli[Unit] = {
+  def applyMigrations(ms: Seq[Migration], arb: Boolean, runTests: Boolean): namedMoveTypes.EWDKleisli[Unit] = {
     import namedMoveTypes._
 
     val mhs = ms zip hashMigrations(ms)
@@ -97,7 +84,7 @@ object DBHandling {
 
   case class MigrationInfoWithDowns(mi: MigrationInfo, downs: Seq[Script])
 
-  private def revertToLatestCommon(latestCommon: Option[Seq[Byte]], arb: Boolean): namedMoveTypes.EWDbKleisli[Unit] = {
+  private def revertToLatestCommon(latestCommon: Option[Seq[Byte]], arb: Boolean): namedMoveTypes.EWDKleisli[Unit] = {
     import namedMoveTypes._
     import downMoveTypes.EWSyntax._
 
@@ -105,52 +92,43 @@ object DBHandling {
       mis <- liftE(migrationsToRevert(latestCommon))
       mids <- liftE(mis.toList.traverse(enrichMigrationWithDowns))
       _ <- {
-        if (mids.isEmpty || arb) mids.toList.traverse[EWDbKleisli, Unit]((mid: MigrationInfoWithDowns) => revertMigration(mid).mapWritten(namedMoveState(mid.mi.name)))
+        if (mids.isEmpty || arb) mids.toList.traverse[EWDKleisli, Unit](mid => revertMigration(mid).mapWritten(namedMoveState(mid.mi.name)))
         else liftE(failure("Will not roll back migrations " + mids.map(_.mi.name).mkString(", ") + ", because allow-rollback is set to false"))
       }
     } yield ()
 
   }
 
-  private def migrationsToRevert(latestCommon: Option[Seq[Byte]]): EDbKleisli[Seq[MigrationInfo]] = {
+  private def migrationsToRevert(latestCommon: Option[Seq[Byte]]): EDKleisli[Seq[MigrationInfo]] = {
     state.map(_.reverse.takeWhile(mi => !latestCommon.exists(_ == mi.hash)))
   }
 
-  private def enrichMigrationWithDowns(mi: MigrationInfo): EDbKleisli[MigrationInfoWithDowns] = {
+  private def enrichMigrationWithDowns(mi: MigrationInfo): EDKleisli[MigrationInfoWithDowns] = {
     downs(mi.hash).map(MigrationInfoWithDowns(mi, _))
   }
 
-  def revertMigration(mid: MigrationInfoWithDowns): downMoveTypes.EWDbKleisli[Unit] = {
+  def rewriteMigration(mid: MigrationInfoWithDowns, dms: DownMoveState, hash: Seq[Byte]): EDKleisli[Unit] = {
+    val downsToWrite = mid.downs.reverse.map(Some(_)).zipAll(dms.appliedDowns.map(Some(_)) :+ dms.crashedDown, None, None)
+      .dropWhile(t => t._1 == t._2).map(_._1.toSeq).flatten.reverse
+
+    addDowns(hash, downsToWrite) >> add(MigrationInfo(name = mid.mi.name, hash = hash, dateTime = now))
+  }
+
+  def revertMigration(mid: MigrationInfoWithDowns): downMoveTypes.EWDKleisli[Unit] = {
     import downMoveTypes._
     import EWSyntax._
 
-    def applyScriptAndWrite(down: Script): EWDbKleisli[Unit] = {
-      val go = WriterT.putWith(applyScript(down, Down).run) {
-        case -\/(_) => crashedDown(down)
-        case \/-(_) => appliedDown(down)
-      }
-
-      EWDbKleisli(go)
-    }
-
-    def rewriteMigration(dms: DownMoveState, hash: Seq[Byte]): EDbKleisli[Unit] = {
-      val downsToWrite = mid.downs.reverse.map(Some(_)).zipAll(dms.appliedDowns.map(Some(_)) :+ dms.crashedDown, None, None)
-        .dropWhile(t => t._1 == t._2).map(_._1.toSeq).flatten.reverse
-
-      addDowns(hash, downsToWrite) >> add(MigrationInfo(name = mid.mi.name, hash = hash, dateTime = now))
+    def applyScriptAndWrite(down: Script): EWDKleisli[Unit] = {
+      liftE(applyScript(down, Down)) :-\/++> crashedDown(down) :\/-++> appliedDown(down)
     }
 
     liftE(removeDowns(mid.mi.hash) >> remove(mid.mi.hash)) >>
       mid.downs.reverse.toList.traverse__(applyScriptAndWrite).recover((dms, f) => {
-        liftE(rewriteMigration(dms, failHash(f)) >> failure(describe(mid.mi.name, dms, f)))
+        liftE(rewriteMigration(mid, dms, failHash(f)) >> failure(describe(mid.mi.name, dms, f)))
       })
   }
 
-  private def applyScripts(ss: Seq[Script], direction: Direction): EDbKleisli[Unit] = {
-    ss.toList.traverse__(s => applyScript(s, direction))
-  }
-
-  private def applyMigrations(mhs: Seq[(Migration, Seq[Byte])], latestCommon: Option[Seq[Byte]], runTests: Boolean): namedMoveTypes.EWDbKleisli[Unit] = {
+  private def applyMigrations(mhs: Seq[(Migration, Seq[Byte])], latestCommon: Option[Seq[Byte]], runTests: Boolean): namedMoveTypes.EWDKleisli[Unit] = {
     import namedMoveTypes._
     import upMoveTypes.EWSyntax._
 
@@ -164,7 +142,7 @@ object DBHandling {
     }
   }
 
-  private def testMigration(m: Migration): EDbKleisli[Unit] = {
+  private def testMigration(m: Migration): EDKleisli[Unit] = {
     m.tests.toList.traverse__(doTest)
   }
 
@@ -172,27 +150,22 @@ object DBHandling {
     mhs.reverse.takeWhile(mh => !latestCommon.exists(_ == mh._2)).reverse
   }
 
-  private def applyGroup(group: Group): upMoveTypes.EWDbKleisli[Unit] = {
+  private def applyGroup(group: Group): upMoveTypes.EWDKleisli[Unit] = {
+    import upMoveTypes._
+    import EWSyntax._
 
-    def apl(up: Script): upMoveTypes.EWDbKleisli[Unit] = {
-      val go = WriterT.putWith(applyScript(up, Up).run) {
-        case -\/(_) => crashedUp(up)
-        case \/-(_) => appliedUp(up)
-      }
-
-      upMoveTypes.EWDbKleisli(go)
+    def apl(up: Script): upMoveTypes.EWDKleisli[Unit] = {
+      liftE(applyScript(up, Up)) :-\/++> crashedUp(up) :\/-++> appliedUp(up)
     }
-
-    import upMoveTypes.EWSyntax._
 
     group.ups.toList.traverse__(apl) :\/-++> (downsToApply(group.downs.toList) ⊹ appliedUpsWithDowns(group.ups.toList))
   }
 
-  def applyMigration(m: Migration, hash: Seq[Byte]): upMoveTypes.EWDbKleisli[Unit] = {
+  def applyMigration(m: Migration, hash: Seq[Byte]): upMoveTypes.EWDKleisli[Unit] = {
     import upMoveTypes._
     import EWSyntax._
 
-    def finalize(downs: List[Script], hash: Seq[Byte]): EDbKleisli[Unit] = {
+    def finalize(downs: List[Script], hash: Seq[Byte]): EDKleisli[Unit] = {
       addDowns(hash, downs) >> add(MigrationInfo(name = m.name, hash = hash, dateTime = now))
     }
 
