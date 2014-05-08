@@ -4,7 +4,7 @@ organization := "com.github.davidpeklak"
 
 name := "smt"
 
-version := "0.3l-SNAPSHOT"
+version := "0.3"
 
 publishMavenStyle := false
 
