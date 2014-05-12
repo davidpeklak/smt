@@ -7,7 +7,7 @@ import java.util.Date
 import smt.db.{DbAction, Database}
 import smt.migration._
 import smt.migration.Group
-import scalaz.-\/
+import scalaz.{\/-, \/, -\/}
 import smt.DBHandling.MigrationInfoWithDowns
 import smt.migration.Test
 import smt.migration.Migration
@@ -20,7 +20,7 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val action = DBHandling.applyMigrations(ms = Seq(mig), arb = false, runTests = true)
 
-    action.run.run(new DatabaseMock).run
+    action.run.run(new ConnectionMock).run
   }
 
   test("apply 10000 migrations fea - smoke") {
@@ -31,36 +31,36 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     import DbAction._
 
-    val db = new DatabaseMock
+    val conn = new ConnectionMock
 
-    action.run.run(db).run
+    action.run.run(conn).run
 
-    assert(db.addCount === 10000)
+    assert(conn.addCount === 10000)
   }
 
-  class ScriptRecordingDbMock extends DatabaseMock {
+  class ScriptRecordingConnectionMock extends ConnectionMock {
     var upScriptSeq: Seq[Script] = Seq()
     var downScriptSeq: Seq[Script] = Seq()
     var testScriptSeq: Seq[Script] = Seq()
     var downss: Seq[(Seq[Byte], Seq[Script])] = Seq()
 
-    override def applyScript(script: Script, direction: Direction): (Option[Failure], Database) = {
+    override def applyScript(script: Script, direction: Direction): String \/ Unit = {
       if (direction == Up) upScriptSeq = upScriptSeq :+ script
       else downScriptSeq = downScriptSeq :+ script
-      if (script.content.contains("bad")) (Some("BAD"), this)
-      else (None, this)
+      if (script.content.contains("bad")) -\/("BAD")
+      else \/-(())
     }
 
 
-    override def testScript(script: Script): (Option[ScriptRecordingDbMock#Failure], Database) = {
+    override def testScript(script: Script): String \/ Unit = {
       testScriptSeq = testScriptSeq :+ script
-      if (script.content.contains("bad")) (Some("BAD"), this)
-      else (None, this)
+      if (script.content.contains("bad")) -\/("BAD")
+      else \/-(())
     }
 
-    override def addDowns(migHash: Seq[Byte], downs: Seq[Script]): (Option[Failure], Database) = {
+    override def addDowns(migHash: Seq[Byte], downs: Seq[Script]): String \/ Unit = {
       downss = downss :+ (migHash, downs)
-      (None, this)
+      \/-(())
     }
 
   }
@@ -74,7 +74,7 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val action = DBHandling.applyMigrations(ms = Seq(mig), arb = false, runTests = true)
 
-    val db = new ScriptRecordingDbMock
+    val db = new ScriptRecordingConnectionMock
 
     action.run.run(db).run
 
@@ -91,7 +91,7 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val action = DBHandling.applyMigrations(ms = Seq(mig), arb = false, runTests = false)
 
-    val db = new ScriptRecordingDbMock
+    val db = new ScriptRecordingConnectionMock
 
     action.run.run(db).run
 
@@ -108,7 +108,7 @@ class DbHandlingTest extends FunSuite with PropTesting {
       Group(Seq(good(8), good(9)), Seq(good(10), good(11)))
     ), Seq())
 
-    val db = new ScriptRecordingDbMock
+    val db = new ScriptRecordingConnectionMock
 
     val action = DBHandling.applyMigration(mig, MigrationHandling.hashMigration(mig, None))
 
@@ -128,7 +128,7 @@ class DbHandlingTest extends FunSuite with PropTesting {
     val downs = Seq(good(1), good(2), bad, good(3), good(4))
     val migInfo = MigrationInfo("migName", Seq[Byte](), new Date)
 
-    val db = new ScriptRecordingDbMock
+    val db = new ScriptRecordingConnectionMock
 
     val action = DBHandling.revertMigration(MigrationInfoWithDowns(migInfo, downs))
 

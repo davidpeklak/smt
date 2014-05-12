@@ -13,14 +13,14 @@ object SMTImpl {
   }
 
   def showDbState(db: Database, s: TaskStreams): Unit = {
-    val result = DbAction.state.run(db).run
+    val result = Handling.state.run(db).run
 
     result.foreach(_.foreach(st => s.log.info(st.toString)))
     result.swap.foreach(failException(s))
   }
 
   def showLatestCommon(db: Database, ms: Seq[Migration], s: TaskStreams): Unit = {
-    val result = DBHandling.latestCommon(ms zip MigrationHandling.hashMigrations(ms)).run(db).run
+    val result = Handling.latestCommon(ms zip MigrationHandling.hashMigrations(ms)).run(db).run
 
     result.foreach(lco => s.log.info(lco.map(_.toString).getOrElse("None")))
     result.swap.foreach(failException(s))

@@ -8,14 +8,14 @@ import NamedMoveStates._
 import scalaz.Scalaz._
 import smt.util.TraverseStackSafeSyntax
 import TraverseStackSafeSyntax._
-import smt.db.DbAction
+import smt.db.{ConnectionAction, DbAction}
 import smt.migration._
 
 object DBHandling {
 
   import MigrationHandling._
 
-  import DbAction._
+  import ConnectionAction._
 
   val upMoveTypes = writerTypes[UpMoveState]
 
@@ -67,7 +67,7 @@ object DBHandling {
   }
 
   def latestCommon(mhs: Seq[(Migration, Seq[Byte])]): EDKleisli[Option[Common]] = {
-    state.map(latestCommon2(_, mhs))
+    state().map(latestCommon2(_, mhs))
   }
 
   def applyMigrations(ms: Seq[Migration], arb: Boolean, runTests: Boolean): namedMoveTypes.EWDKleisli[Unit] = {
@@ -100,7 +100,7 @@ object DBHandling {
   }
 
   private def migrationsToRevert(latestCommon: Option[Seq[Byte]]): EDKleisli[Seq[MigrationInfo]] = {
-    state.map(_.reverse.takeWhile(mi => !latestCommon.exists(_ == mi.hash)))
+    state().map(_.reverse.takeWhile(mi => !latestCommon.exists(_ == mi.hash)))
   }
 
   private def enrichMigrationWithDowns(mi: MigrationInfo): EDKleisli[MigrationInfoWithDowns] = {

@@ -2,51 +2,67 @@ package smt.db.impl
 
 import smt.util.Util
 import Util._
-import smt.db.Database
+import smt.db.{Connection, Database}
 import smt.migration.{Script, MigrationInfo, Direction}
+import scalaz.{\/-, \/}
 
 class TestDatabase extends Database {
-
-    def add(migrationInfo: MigrationInfo): (Option[Failure], Database)  = {
-      println("adding " + migrationInfo)
-      s =  s :+ migrationInfo
-      (None, this)
-    }
-
-    def addDowns(migHash: Seq[Byte], downs: Seq[Script]): (Option[Failure], Database) = {
-      println("adding " + downs)
-      ds = ds + (migHash -> downs)
-      (None, this)
-    }
-
-    def remove(hash: Seq[Byte]): (Option[Failure], Database) = {
-      println("removing " + bytesToHex(hash))
-      s = s.filterNot(_.hash == hash)
-      (None, this)
-    }
-
-    def removeDowns(migHash: Seq[Byte]): (Option[Failure], Database) = {
-      println("removing downs" + bytesToHex(migHash))
-      ds = ds - migHash
-      (None, this)
-    }
-
-    def applyScript(script: Script, direction: Direction): (Option[Failure], Database) = {
-      println("applying " + direction + " " + script)
-      (None, this)
-    }
-
-
-  def testScript(script: Script): (Option[TestDatabase#Failure], Database) =  {
-    println("applying test " + script)
-    (None, this)
+  def connection(): \/[String, Connection] = {
+    \/-(new TestConnection)
   }
+}
+
+class TestConnection extends Connection {
 
   private var s: Seq[MigrationInfo] = Nil
 
   private var ds: Map[Seq[Byte], Seq[Script]] = Map()
 
-  def state: Either[Failure, Seq[MigrationInfo]] = Right(s)
+  def init(): String \/ Unit = {
+    \/-()
+  }
 
-  def downs(hash: Seq[Byte]): Either[Failure, Seq[Script]] = Right(ds(hash))
+  def add(migrationInfo: MigrationInfo): String \/ Unit = {
+    println("adding " + migrationInfo)
+    s = s :+ migrationInfo
+    \/-()
+  }
+
+  def addDowns(migHash: Seq[Byte], downs: Seq[Script]): String \/ Unit = {
+    println("adding " + downs)
+    ds = ds + (migHash -> downs)
+    \/-()
+  }
+
+  def remove(hash: Seq[Byte]): String \/ Unit = {
+    println("removing " + bytesToHex(hash))
+    s = s.filterNot(_.hash == hash)
+    \/-()
+  }
+
+  def removeDowns(migHash: Seq[Byte]): String \/ Unit = {
+    println("removing downs" + bytesToHex(migHash))
+    ds = ds - migHash
+    \/-()
+  }
+
+  def applyScript(script: Script, direction: Direction): String \/ Unit = {
+    println("applying " + direction + " " + script)
+    \/-()
+  }
+
+
+  def testScript(script: Script): String \/ Unit = {
+    println("applying test " + script)
+    \/-()
+  }
+
+  def state: String \/ Seq[MigrationInfo] = \/-(s)
+
+  def downs(hash: Seq[Byte]): String \/ Seq[Script] = \/-(ds(hash))
+
+  def close(): String \/ Unit = {
+    println("closing")
+    \/-()
+  }
 }

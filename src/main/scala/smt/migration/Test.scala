@@ -1,13 +1,14 @@
 package smt.migration
 
 import java.io.File
-import smt.db.Database
+import smt.db.Connection
 import ScriptParsers._
+import scalaz.\/
 
-case class Test (run: Database => Either[String, Unit])
+case class Test (run: Connection => String \/ Unit)
 
 object ScriptTest {
-  def scriptTest(script: Script): Test = Test(db => db.testScript(script)._1.toLeft(()))
+  def scriptTest(script: Script): Test = Test(db => db.testScript(script))
 
   def apply(file: File): Seq[Test] = OneFileOneScriptParser(file).map(scriptTest)
 

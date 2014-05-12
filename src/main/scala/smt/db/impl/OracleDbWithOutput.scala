@@ -3,8 +3,15 @@ package smt.db.impl
 import java.sql.{Connection => JConnection}
 import smt.db.Database
 import smt.migration.{Script, Direction}
+import scalaz.\/
 
-class OracleDbWithOutput(connection: => JConnection) extends OracleDatabase(connection) {
+class OracleDatabaseWithOutput(connection: => JConnection) extends SqlDatabase(
+new OracleConnectionWithOutput(connection)
+)
+
+class OracleConnectionWithOutput(connection: JConnection) extends OracleConnection(connection) {
+  import SqlDatabase._
+  import SqlConnection._
 
   private def doApplyScript(script: Script) {
     withStatement(cnx)(_.execute("begin dbms_output.enable(1000000); end;"))
@@ -40,12 +47,12 @@ class OracleDbWithOutput(connection: => JConnection) extends OracleDatabase(conn
     withStatement(cnx)(_.execute("begin dbms_output.disable; end;"))
   }
 
-  override def applyScript(script: Script, direction: Direction): (Option[Failure], Database) = effectExceptionToFailure {
+  override def applyScript(script: Script, direction: Direction): String \/ Unit = fromTryCatch {
     println("applying " + direction + " script: " + script)
     doApplyScript(script)
   }
 
-  override def testScript(script: Script): (Option[SqlDatabase#Failure], Database) = effectExceptionToFailure {
+  override def testScript(script: Script): String \/ Unit = fromTryCatch {
     println("applying test script: " + script)
     doApplyScript(script)
   }

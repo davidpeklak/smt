@@ -5,7 +5,6 @@ import org.scalacheck.Gen.choose
 import org.scalacheck.Prop.forAll
 import MigrationGen._
 import smt.MigrationHandling._
-import GenUtil._
 import org.scalatest.FunSuite
 import smt.migration.Migration
 
@@ -19,10 +18,12 @@ class MigrationHandlingTest extends FunSuite with PropTesting {
     case class MigSeqAndTwoIndices(ms: Seq[Migration], i1: Int, i2: Int)
 
     val msa2iGen: Gen[MigSeqAndTwoIndices] = {
-      for (l <- choose(2, 50);
-           ms <- distinctListOfN(l, migGen);
-           i1 <- choose(0, l - 1);
-           i2 <- choose(0, l - 1).filter(_ != i1))
+      for {
+        l <- choose(2, 50)
+        ms <- listOfDistinctMig(l)
+        i1 <- choose(0, l - 1)
+        i2 <- choose(0, l - 1).filter(_ != i1)
+      }
       yield MigSeqAndTwoIndices(ms, i1 min i2, i1 max i2)
     }
 

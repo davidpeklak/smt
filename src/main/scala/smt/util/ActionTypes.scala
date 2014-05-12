@@ -14,9 +14,9 @@ trait ActionTypes[D] {
 
   type EDKleisli[+A] = EitherT[DKleisli, String, A]
 
-  // implicit val EDM = Kleisli.kleisliMonadPlus
+  def EDKleisli[A](a: DKleisli[SE[A]]): EDKleisli[A] = EitherT[DKleisli, String, A](a)
 
-  def EDKleisli[A](a: DKleisli[SE[A]]) = EitherT[DKleisli, String, A](a)
+  def EDKleisli[A](f: D => SE[A]): EDKleisli[A] = EDKleisli(DKleisli(f))
 
   def point[A](a: A): DKleisli[A] = DKleisli(_ => a)
 
@@ -26,6 +26,8 @@ trait ActionTypes[D] {
 
   trait WriterTypes[W] {
 
+    implicit val wMonoid: Monoid[W]
+
     type WDKleisli[+A] = WriterT[DKleisli, W, A]
 
     def WDKleisli[A](a: DKleisli[(W, A)]): WDKleisli[A] = WriterT[DKleisli, W, A](a)
@@ -34,14 +36,29 @@ trait ActionTypes[D] {
 
     def EWDKleisli[A](wa: WDKleisli[SE[A]]) = EitherT[WDKleisli, String, A](wa)
 
-    def lift[A](dKleisli: DKleisli[A])(implicit W: Monoid[W]): WDKleisli[A] = WriterT.writerTMonadTrans[W].liftM(dKleisli)
+    def lift[A](dKleisli: DKleisli[A]): WDKleisli[A] = WriterT.writerTMonadTrans[W].liftM(dKleisli)
 
-    def liftE[A](edKleisli: EDKleisli[A])(implicit W: Monoid[W]): EWDKleisli[A] = EWDKleisli(lift(edKleisli.run))
+    def liftE[A](edKleisli: EDKleisli[A]): EWDKleisli[A] = EWDKleisli(lift(edKleisli.run))
 
     def putE[A](edKleisli: EDKleisli[A])(w: W): EWDKleisli[A] = EitherT[WDKleisli, String, A](WriterT.put(edKleisli.run)(w))
 
-    val EWSyntax = EitherTWriterT.eitherTWriterTSyntax[DKleisli, String, W]
+    lazy val EWSyntax = EitherTWriterT.eitherTWriterTSyntax[DKleisli, String, W]
+
+    lazy val ewSyntax = KleisliStack.EitherTWriterTKleisli[String, W].tKleisliSyntax[Future, D]
+
+    // the implicits are lazy, otherwise I get NullPointerExceptions
+    implicit lazy val wInstance = WriterT.writerTMonad[DKleisli, W]
+
+    implicit lazy val ewInstance = EitherT.eitherTMonad[WDKleisli, String]
+
+    implicit lazy val wUnstackedInstance = WriterT.writerTMonad[Future, W]
+
+    implicit lazy val ewUnstackedInstance = EitherT.eitherTMonad[({type λ[+α] = WriterT[Future, W, α]})#λ, String]
   }
 
-  def writerTypes[S]: WriterTypes[S] = new WriterTypes[S] {}
+  def writerTypes[S : Monoid]: WriterTypes[S] = new WriterTypes[S] {
+    lazy val wMonoid = implicitly[Monoid[S]]
+  }
+
+  val eSyntax = KleisliStack.EitherTKleisli[String].tKleisliSyntax[Future, D]
 }

@@ -2,27 +2,28 @@ package smt.db.impl
 
 import java.sql.{Connection => JConnection, _}
 import java.util.Date
-import scala.util.control.Exception.{Catcher, catching, allCatcher}
+import scala.util.control.Exception.{Catcher, catching}
 import smt.util.Util
 import Util._
 import collection.Map.empty
-import smt.db.Database
+import smt.db.{Connection, Database}
 import smt.migration.{Script, MigrationInfo, Direction}
+import scalaz.\/
 
-abstract class SqlDatabase(connection: => JConnection) extends Database {
-  sqlDatabase =>
-
-  def tableExistsCatcher(name: String): Catcher[Unit]
-
-  def noDataCatcher[A]: Catcher[Seq[A]]
-
-  protected def exceptionToFailure[A](block: => A): Either[Failure, A] = {
-    catching(allCatcher[A]).either(block).left.map(_.toString)
+object SqlDatabase {
+  def fromTryCatch[A](block: => A): String \/ A = {
+    \/.fromTryCatch(block).leftMap(_.toString)
   }
+}
 
-  protected def effectExceptionToFailure(block: => Unit): (Option[Failure], Database) = {
-    (exceptionToFailure(block).left.toOption, this)
-  }
+abstract class SqlDatabase(sqlConn: => SqlConnection) extends Database {
+
+  import SqlDatabase._
+
+  def connection(): String \/ SqlConnection = fromTryCatch(sqlConn)
+}
+
+object SqlConnection {
 
   def withStatement[U](c: JConnection)(f: Statement => U, ca: Catcher[U] = empty[Throwable, U]): U = {
     val st = c.createStatement()
@@ -34,10 +35,18 @@ abstract class SqlDatabase(connection: => JConnection) extends Database {
     catching(ca).andFinally(st.close())(f(st))
   }
 
-  protected def withCallableStatement[U](c: JConnection, sql: String)(f: CallableStatement => U, ca: Catcher[U] = empty[Throwable, U]) = {
+  def withCallableStatement[U](c: JConnection, sql: String)(f: CallableStatement => U, ca: Catcher[U] = empty[Throwable, U]) = {
     val st = c.prepareCall(sql)
     catching(ca).andFinally(st.close())(f(st))
   }
+}
+
+abstract class SqlConnection(protected  val cnx: JConnection) extends Connection {
+  sqlConnection =>
+
+  def tableExistsCatcher(name: String): Catcher[Unit]
+
+  def noDataCatcher[A]: Catcher[Seq[A]]
 
   val NAME = "NAME"
   val HASH = "HASH"
@@ -67,18 +76,19 @@ abstract class SqlDatabase(connection: => JConnection) extends Database {
     "DELETE FROM " + DOWN + " WHERE HASH = '" + bytesToHex(hash) + "'"
   }
 
-  def insertDownString(name: String, hash: Seq[Byte], index: Int) = "INSERT INTO " + DOWN + " VALUES ('"+  bytesToHex(hash) + "', " + index + ", ?, '" + name + "')"
+  def insertDownString(name: String, hash: Seq[Byte], index: Int) = "INSERT INTO " + DOWN + " VALUES ('" + bytesToHex(hash) + "', " + index + ", ?, '" + name + "')"
 
   def queryDownString(hash: Seq[Byte]) = "SELECT * FROM " + DOWN + " WHERE HASH = '" + bytesToHex(hash) + "'"
 
-  lazy val cnx = {
-    val cnx = connection
+  import SqlDatabase._
+  import SqlConnection._
+
+  def init(): String \/ Unit = fromTryCatch {
     withStatement(cnx)(_.execute(createMigrationTableString), tableExistsCatcher(MIGRATION))
     withStatement(cnx)(_.execute(createDownsTableString), tableExistsCatcher(DOWN))
-    cnx
   }
 
-  def add(migrationInfo: MigrationInfo): (Option[Failure], Database) = effectExceptionToFailure {
+  def add(migrationInfo: MigrationInfo): String \/ Unit = fromTryCatch {
     val mm = withStatement(cnx)(st => {
       mapResultSet(st.executeQuery(queryMigrationTableString))(rs => {
         rs.getLong(INDEX)
@@ -93,7 +103,7 @@ abstract class SqlDatabase(connection: => JConnection) extends Database {
     withStatement(cnx)(_.execute(insertMigrationString(migrationInfo, mi)))
   }
 
-  def addDowns(migHash: Seq[Byte], downs: Seq[Script]): (Option[Failure], Database) = effectExceptionToFailure {
+  def addDowns(migHash: Seq[Byte], downs: Seq[Script]): String \/ Unit = fromTryCatch {
     println("adding " + downs.size + " downs")
     def addDown(i: Int, down: Script) {
       println("adding down: " + down)
@@ -108,28 +118,28 @@ abstract class SqlDatabase(connection: => JConnection) extends Database {
     downs.zipWithIndex.foreach(t => addDown(t._2, t._1))
   }
 
-  def remove(hash: Seq[Byte]): (Option[Failure], Database) = effectExceptionToFailure {
+  def remove(hash: Seq[Byte]): String \/ Unit = fromTryCatch {
     println("removing " + bytesToHex(hash))
     withStatement(cnx)(_.execute(removeMigrationString(hash)))
   }
 
-  def removeDowns(migHash: Seq[Byte]): (Option[Failure], Database) = effectExceptionToFailure {
+  def removeDowns(migHash: Seq[Byte]): String \/ Unit = fromTryCatch {
     println("removing downs for " + bytesToHex(migHash))
     withStatement(cnx)(_.execute(removeDownsString(migHash)))
   }
 
-  def applyScript(script: Script, direction: Direction): (Option[Failure], Database) = effectExceptionToFailure {
+  def applyScript(script: Script, direction: Direction): String \/ Unit = fromTryCatch {
     println("applying " + direction + " script: " + script)
     withStatement(cnx)(_.execute(script.content))
   }
 
 
-  def testScript(script: Script): (Option[SqlDatabase#Failure], Database) = effectExceptionToFailure {
+  def testScript(script: Script): String \/ Unit = fromTryCatch {
     println("applying test script: " + script)
     withStatement(cnx)(_.execute(script.content))
   }
 
-  def state: Either[Failure, Seq[MigrationInfo]] = exceptionToFailure(withStatement(cnx)(st => {
+  def state: String \/ Seq[MigrationInfo] = fromTryCatch(withStatement(cnx)(st => {
     mapResultSet(st.executeQuery(queryMigrationTableString))(rs => {
       (MigrationInfo(
         name = rs.getString(NAME),
@@ -141,7 +151,7 @@ abstract class SqlDatabase(connection: => JConnection) extends Database {
     }).toSeq.sortBy(_._2).map(_._1)
   }, noDataCatcher))
 
-  def downs(hash: Seq[Byte]): Either[Failure, Seq[Script]] = exceptionToFailure(withStatement(cnx)(st => {
+  def downs(hash: Seq[Byte]): String \/ Seq[Script] = fromTryCatch(withStatement(cnx)(st => {
     mapResultSet(st.executeQuery(queryDownString(hash)))(rs => {
       val index = rs.getInt(INDEX)
       val name = Option(rs.getString(NAME)).getOrElse(index.toString)
@@ -150,4 +160,6 @@ abstract class SqlDatabase(connection: => JConnection) extends Database {
       (down, index)
     }).toSeq.sortBy(_._2).map(_._1)
   }, noDataCatcher))
+
+  def close(): \/[String, Unit] = fromTryCatch(cnx.close())
 }

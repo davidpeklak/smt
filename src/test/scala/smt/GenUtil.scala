@@ -5,12 +5,14 @@ import scala.annotation.tailrec
 
 object GenUtil {
 
-  def distinctListOfN[T](n: Int, g: Gen[T]): Gen[List[T]] = {
+  def listOfDistinctN[T](n: Int, g: Gen[T], eq: (T, T) => Boolean): Gen[List[T]] = {
     type GL = Gen[List[T]]
 
     def oneMore(gl: GL): GL = {
-      for (l <- gl;
-           t <- g.filter(t => !l.contains(t)))
+      for {
+        l <- gl
+        t <- g.filter(t => !l.exists(eq(_, t)))
+      }
       yield t +: l
     }
 

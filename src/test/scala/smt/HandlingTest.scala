@@ -35,7 +35,7 @@ class HandlingTest extends FunSuite {
 
     val action = Handling.applyMigrationsAndReport(ms = Seq(mig), arb = false, runTests = true)
 
-    action.run(HandlingDep(new DatabaseMock, List(reporter), logger)).run
+    action.run(HandlingDep(new DatabaseMock(new ConnectionMock), List(reporter), logger)).run
 
     assert(reporter.called)
   }
