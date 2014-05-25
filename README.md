@@ -1,4 +1,5 @@
 # SMT
+[![Build Status](https://travis-ci.org/davidpeklak/smt.svg?branch=master)](https://travis-ci.org/davidpeklak/smt)
 Smt is a database migrations tool that is implemented as a plugin for [sbt](http://www.scala-sbt.org). Smt stands either for 'sbt migrations tool' or for 'simple migrations tool'.
 
 Smt is ideally used by teams or single developers who use scala and sbt on the application side, and have to do a lot of database work, maybe with a dedicated database-developer. A basic set-up is relatively straight-forward, and can be done by any developer without a specific scala / sbt background. For more complex set-ups, it is certainly helpful to have
