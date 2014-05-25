@@ -10,6 +10,10 @@ import smt.migration.Migration
 
 class MigrationHandlingTest extends FunSuite with PropTesting {
 
+  def swap[A](as: Seq[A], i1: Int, i2: Int): Seq[A] = {
+    as.slice(0, i1) ++: (as(i2) +: as.slice(i1 + 1, i2)) ++: (as(i1) +: as.slice(i2 + 1, as.size))
+  }
+
   test("hashMigrations") {
     // genereate a sequence of migrations. Swap two migrations
     // within the sequence and verify that the hash of the last
@@ -19,7 +23,7 @@ class MigrationHandlingTest extends FunSuite with PropTesting {
 
     val msa2iGen: Gen[MigSeqAndTwoIndices] = {
       for {
-        l <- choose(2, 50)
+        l <- choose(2, 20)
         ms <- listOfDistinctMig(l)
         i1 <- choose(0, l - 1)
         i2 <- choose(0, l - 1).filter(_ != i1)
@@ -30,8 +34,7 @@ class MigrationHandlingTest extends FunSuite with PropTesting {
     val p = forAll(msa2iGen)(msa2i => {
       import msa2i._
       val hash = hashMigrations(ms).last
-      val swappedMs = ms.slice(0, i1) ++: (ms(i2) +: ms.slice(i1 + 1, i2)) ++: (ms(i1) +: ms.slice(i2 + 1, ms.size))
-      val hashSwapped = hashMigrations(swappedMs).last
+      val hashSwapped = hashMigrations(swap(ms, i1, i2)).last
       hash != hashSwapped
     })
 
