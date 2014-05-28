@@ -10,6 +10,7 @@ import smt.util.ActionTypes
 import smt.describe.DescribeAction
 import sbt.Logger
 import scalaz.-\/
+import smt.migration.Up
 
 case class HandlingDep(db: Database, rps: List[Reporter], log: Logger)
 
@@ -45,6 +46,14 @@ object Handling extends ActionTypes[HandlingDep] {
     }
   }
 
+  def applyScript(scr: migration.Script): dbActionTypes.EDKleisli[Unit] = {
+    import dbActionTypes.eSyntax._
+
+    DbAction.connection() >=> {
+      ConnectionAction.applyScript(scr, Up) >> ConnectionAction.close()
+    }
+  }
+
   def applyMigrationsAndReport(ms: Seq[Migration], arb: Boolean, runTests: Boolean): DKleisli[Unit] = {
     for {
       nmse <- {
@@ -54,7 +63,7 @@ object Handling extends ActionTypes[HandlingDep] {
 
           dbActionNamedMoveTypes.liftE(DbAction.connection()) >=> {
             import DBHandling.namedMoveTypes._
-            liftE(ConnectionAction.init()) >>  DBHandling.applyMigrations(ms, arb, runTests) >> liftE(ConnectionAction.close())
+            liftE(ConnectionAction.init()) >> DBHandling.applyMigrations(ms, arb, runTests) >> liftE(ConnectionAction.close())
           }
         }.run.run
           .local[HandlingDep](_.db)
@@ -66,6 +75,10 @@ object Handling extends ActionTypes[HandlingDep] {
         (nms.actions.lastOption, e) match {
           case (Some(ms), -\/(f)) => {
             DescribeAction.describe(ms._1, ms._2, f)
+              .local[HandlingDep](_.log)
+          }
+          case (None, -\/(f)) => {
+            DescribeAction.describe(f)
               .local[HandlingDep](_.log)
           }
           case _ => point(())

@@ -1,9 +1,12 @@
 package smt
 
-import smt.db.{Database, DbAction}
+import smt.db.Database
+import sbt._
 import sbt.Keys._
-import smt.migration.Migration
 import report.Reporter
+import java.io.File
+import smt.migration.ScriptParsers._
+import smt.migration.Migration
 
 object SMTImpl {
 
@@ -13,7 +16,7 @@ object SMTImpl {
   }
 
   def showDbState(db: Database, s: TaskStreams): Unit = {
-    val result = Handling.state.run(db).run
+    val result = Handling.state().run(db).run
 
     result.foreach(_.foreach(st => s.log.info(st.toString)))
     result.swap.foreach(failException(s))
@@ -43,6 +46,20 @@ object SMTImpl {
       }
       case Seq() => throw new Exception("Name of a migration expected.")
       case _ => throw new Exception("Too many arguments. Name of a migration expected.")
+    }
+  }
+
+  def runScript(args: Seq[String], sourceDir: File, db: Database, s: TaskStreams) {
+    args match {
+      case Seq(dir) => {
+        val relPath = IO.pathSplit(dir).toSeq
+        val fullPath = relPath.foldLeft[File](sourceDir)((p, s) => p / s)
+        val script = OneFileOneScriptParser(fullPath).head
+        val action = Handling.applyScript(script)
+        action.run(db).run
+      }
+      case Seq() => throw new Exception("Path expected.")
+      case _ => throw new Exception("Too many arguments. Path expected.")
     }
   }
 }

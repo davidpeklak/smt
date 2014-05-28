@@ -6,6 +6,10 @@ import sbt.Logger
 
 object DescribeAction extends ActionTypes[Logger] {
 
+  def describe(f: String): DKleisli[Unit] = {
+    DKleisli(log => log.warn(f))
+  }
+
   def describe(migName: String, ms: MoveState, f: String): DKleisli[Unit] = {
     DKleisli(log => ms match {
       case dms: DownMoveState => describeDms(migName, dms, f).foreach(l => log.warn(l))

@@ -13,6 +13,7 @@ object SMT extends Plugin {
 
   lazy val globalSmtSettings = Seq(
     migrationsSource <<= (sourceDirectory in Compile) / "migrations",
+    scriptSource <<= baseDirectory,
     allowRollback := false,
     runTests := true
   )
@@ -24,10 +25,13 @@ object SMT extends Plugin {
     applyMigrations <<= (database, transformedMigrations, allowRollback, runTests, reporters, streams) map SMTImpl.applyMigrations,
     migrateTo <<= inputTask((argTask: TaskKey[Seq[String]]) => (argTask, database, transformedMigrations, allowRollback, runTests, reporters, streams) map SMTImpl.migrateTo),
     showLatestCommon <<= (database, transformedMigrations, streams) map SMTImpl.showLatestCommon,
+    runScript <<= inputTask((argTask: TaskKey[Seq[String]]) => (argTask, scriptSource, database, streams) map SMTImpl.runScript),
     reporters := Seq[Reporter]()
   )
 
   val migrationsSource = SettingKey[File]("migrations-source", "base-directory for migration files")
+
+  val scriptSource = SettingKey[File]("script-source", "base directory for migration-independent db-scripts")
 
   val migrations = TaskKey[Seq[Migration]]("migrations", "sequence of migrations")
 
@@ -50,6 +54,8 @@ object SMT extends Plugin {
   val applyMigrations = TaskKey[Unit]("apply-migrations", "apply the migrations to the DB")
 
   val migrateTo = InputKey[Unit]("migrate-to", "move db to the specified migration")
+
+  val runScript = InputKey[Unit]("run-script", "run a script against the database")
 
   val reporters = SettingKey[Seq[Reporter]]("reporters", "sequence of reporters to notify about db changes")
 }
