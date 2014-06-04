@@ -3,6 +3,7 @@ package smt.util
 import scalaz._
 import scalaz.concurrent.Future
 import scalaz.\/-
+import smt.{NamedMoveStates, DownMoveState, UpMoveState}
 
 trait ActionTypes[D] {
 
@@ -59,6 +60,12 @@ trait ActionTypes[D] {
   def writerTypes[S : Monoid]: WriterTypes[S] = new WriterTypes[S] {
     lazy val wMonoid = implicitly[Monoid[S]]
   }
+
+  val upMoveTypes = writerTypes[UpMoveState]
+
+  val downMoveTypes = writerTypes[DownMoveState]
+
+  val namedMoveTypes = writerTypes[NamedMoveStates]
 
   val eSyntax = KleisliStack.EitherTKleisli[String].tKleisliSyntax[Future, D]
 }

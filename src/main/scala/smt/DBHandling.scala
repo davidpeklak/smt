@@ -8,20 +8,17 @@ import NamedMoveStates._
 import scalaz.Scalaz._
 import smt.util.TraverseStackSafeSyntax
 import TraverseStackSafeSyntax._
-import smt.db.{ConnectionAction, DbAction}
+import smt.db._
 import smt.migration._
+import smt.migration.Group
+import smt.migration.MigrationInfo
+import scala.Some
+import smt.migration.Script
+import smt.migration.Migration
 
-object DBHandling {
+object DBHandling extends ConnectionAction[HasConnectionOnly] {
 
   import MigrationHandling._
-
-  import ConnectionAction._
-
-  val upMoveTypes = writerTypes[UpMoveState]
-
-  val downMoveTypes = writerTypes[DownMoveState]
-
-  val namedMoveTypes = writerTypes[NamedMoveStates]
 
   def now: Date = new Date
 
