@@ -22,9 +22,9 @@ object MigrationHandling {
 
   private lazy val md = MessageDigest.getInstance("SHA")
 
-  def hashBytes(bs: Seq[Byte]): Seq[Byte] = md.digest(bs.toArray).toSeq
+  def hashBytes(bs: Seq[Byte]): Seq[Byte] = synchronized(md.digest(bs.toArray).toSeq)
 
-  def hashMigration(m: Migration, preOpt: Option[Seq[Byte]]) = {
+  def hashMigration(m: Migration, preOpt: Option[Seq[Byte]]): Seq[Byte] = {
     hashBytes(preOpt.getOrElse(Seq()) ++ m.groups.flatMap(_.ups).map(_.content).foldRight(Seq[Byte]())(stringToBytes(_) ++ _))
   }
 
