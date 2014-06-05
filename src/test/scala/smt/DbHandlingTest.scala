@@ -4,7 +4,7 @@ import org.scalatest.FunSuite
 import MigrationGen._
 import org.scalacheck.Gen
 import java.util.Date
-import smt.db.{DbAction, Database}
+import smt.db.{HasDbOnly, HasConnectionOnly, DbAction, Database}
 import smt.migration._
 import smt.migration.Group
 import scalaz.{\/-, \/, -\/}
@@ -20,7 +20,7 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val action = DBHandling.applyMigrations(ms = Seq(mig), arb = false, runTests = true)
 
-    action.run.run(new ConnectionMock).run
+    action.run.run(HasConnectionOnly(new ConnectionMock)).run
   }
 
   test("apply 10000 migrations fea - smoke") {
@@ -29,11 +29,9 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val action = DBHandling.applyMigrations(ms = Seq.fill(10000)(mig), arb = false, runTests = true)
 
-    import DbAction._
-
     val conn = new ConnectionMock
 
-    action.run.run(conn).run
+    action.run.run(HasConnectionOnly(conn)).run
 
     assert(conn.addCount === 10000)
   }
@@ -74,12 +72,12 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val action = DBHandling.applyMigrations(ms = Seq(mig), arb = false, runTests = true)
 
-    val db = new ScriptRecordingConnectionMock
+    val conn= new ScriptRecordingConnectionMock
 
-    action.run.run(db).run
+    action.run.run(HasConnectionOnly(conn)).run
 
-    assert(db.testScriptSeq.size === 1)
-    assert(db.testScriptSeq(0) === testScript)
+    assert(conn.testScriptSeq.size === 1)
+    assert(conn.testScriptSeq(0) === testScript)
   }
 
   test("apply one migration with test - but don't run tests") {
@@ -91,11 +89,11 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val action = DBHandling.applyMigrations(ms = Seq(mig), arb = false, runTests = false)
 
-    val db = new ScriptRecordingConnectionMock
+    val conn = new ScriptRecordingConnectionMock
 
-    action.run.run(db).run
+    action.run.run(HasConnectionOnly(conn)).run
 
-    assert(db.testScriptSeq.size === 0)
+    assert(conn.testScriptSeq.size === 0)
   }
 
   def good(i: Int) = Script("good" + i.toString, "good")
@@ -108,39 +106,39 @@ class DbHandlingTest extends FunSuite with PropTesting {
       Group(Seq(good(8), good(9)), Seq(good(10), good(11)))
     ), Seq())
 
-    val db = new ScriptRecordingConnectionMock
+    val conn = new ScriptRecordingConnectionMock
 
     val action = DBHandling.applyMigration(mig, MigrationHandling.hashMigration(mig, None))
 
-    val r: (UpMoveState, DbAction.SE[Unit]) = action.run.run(db).run
+    val r: (UpMoveState, DBHandling.SE[Unit]) = action.run.run(HasConnectionOnly(conn)).run
 
     r._2 match {
       case -\/(f) => println(f)
       case _ => ()
     }
 
-    assert(db.upScriptSeq === Seq(good(1), good(2), good(5), bad))
-    assert(db.downss.size === 1)
-    assert(db.downss(0)._2 === Seq(good(3), good(4)))
+    assert(conn.upScriptSeq === Seq(good(1), good(2), good(5), bad))
+    assert(conn.downss.size === 1)
+    assert(conn.downss(0)._2 === Seq(good(3), good(4)))
   }
   
   test("revert one migration that fails") {
     val downs = Seq(good(1), good(2), bad, good(3), good(4))
     val migInfo = MigrationInfo("migName", Seq[Byte](), new Date)
 
-    val db = new ScriptRecordingConnectionMock
+    val conn = new ScriptRecordingConnectionMock
 
     val action = DBHandling.revertMigration(MigrationInfoWithDowns(migInfo, downs))
 
-    val r: (DownMoveState, DbAction.SE[Unit]) = action.run.run(db).run
+    val r: (DownMoveState, DBHandling.SE[Unit]) = action.run.run(HasConnectionOnly(conn)).run
 
     r._2 match {
       case -\/(f) => println(f)
       case _ => ()
     }
 
-    assert(db.downScriptSeq === Seq(good(4), good(3), bad))
-    assert(db.downss.size === 1)
-    assert(db.downss(0)._2 === Seq(good(1), good(2)))
+    assert(conn.downScriptSeq === Seq(good(4), good(3), bad))
+    assert(conn.downss.size === 1)
+    assert(conn.downss(0)._2 === Seq(good(1), good(2)))
   }
 }
