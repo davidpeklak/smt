@@ -4,30 +4,29 @@ import smt.NamedMoveStates
 import smt.util.ActionTypes
 import scalaz.Kleisli
 import scalaz.concurrent.Future
-import smt.report.HasReporter.HasReporter
 import scalaz.Scalaz._
 
-object HasReporter {
+object ReporterAction {
   type HasReporter[α] = α => Reporter
 }
 
 trait ReporterAction[T] extends ActionTypes[T] {
 
-  val hasReporter: HasReporter.HasReporter[T]
+  val hasReporter: ReporterAction.HasReporter[T]
 
   def report(nms: NamedMoveStates): DKleisli[Unit] = DKleisli(hasReporter(_).report(nms).getOrElse(()))
 }
 
-object HasReporters {
+object ReportersAction {
   type HasReporters[α] = α => List[Reporter]
 }
 
 trait ReportersAction[T] extends ActionTypes[T] {
 
-  val hasReporters: HasReporters.HasReporters[T]
+  val hasReporters: ReportersAction.HasReporters[T]
 
   lazy val reporterAction = new ReporterAction[Reporter] {
-    lazy val hasReporter: HasReporter[Reporter] = identity
+    lazy val hasReporter: ReporterAction.HasReporter[Reporter] = identity
   }
 
   def reportToAll(nms: NamedMoveStates): Kleisli[Future, T, Unit] = {

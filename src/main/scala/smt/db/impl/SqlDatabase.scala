@@ -144,7 +144,9 @@ abstract class SqlConnection(protected  val cnx: JConnection) extends Connection
       (MigrationInfo(
         name = rs.getString(NAME),
         hash = hexToBytes(rs.getString(HASH)),
-        dateTime = new Date(rs.getLong(TIME))
+        dateTime = new Date(rs.getLong(TIME)),
+        None,
+        None
       ),
         rs.getLong(INDEX)
         )

@@ -2,6 +2,7 @@ package smt.db
 
 import smt.migration.{Test, Direction, Script, MigrationInfo}
 import smt.util.ActionTypes
+import java.util.Date
 
 object ConnectionAction {
   type HasConnection[α] = α => Connection
@@ -10,7 +11,7 @@ object ConnectionAction {
 trait ConnectionAction[T] extends ActionTypes[T] {
 
   val hasConnection: ConnectionAction.HasConnection[T]
-  
+
   def init(): EDKleisli[Unit] = EDKleisli(hasConnection(_).init())
 
   def state(): EDKleisli[Seq[MigrationInfo]] = EDKleisli(hasConnection(_).state)
@@ -30,4 +31,17 @@ trait ConnectionAction[T] extends ActionTypes[T] {
   def doTest(test: Test): EDKleisli[Unit] = EDKleisli(t => test.run(hasConnection(t)))
 
   def close(): EDKleisli[Unit] = EDKleisli(hasConnection(_).close())
+}
+
+object AddAction {
+  type HasUser[α] = α => Option[String]
+
+  type HasRemark[α] = α => Option[String]
+}
+
+trait AddAction[T] extends ConnectionAction[T] {
+  val hasUser: AddAction.HasUser[T]
+  val hasRemark: AddAction.HasRemark[T]
+
+  def add(name: String, hash: Seq[Byte], dateTime: Date): EDKleisli[Unit] = EDKleisli(t => hasConnection(t).add(new MigrationInfo(name, hash, dateTime, hasUser(t), hasRemark(t))))
 }

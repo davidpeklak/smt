@@ -8,8 +8,9 @@ import java.io.File
 import smt.migration.ScriptParsers._
 import smt.migration.Migration
 import smt.db.DbAction.HasDb
-import smt.report.HasReporters.HasReporters
-import smt.describe.HasLogger.HasLogger
+import smt.report.ReportersAction.HasReporters
+import smt.describe.DescribeAction.HasLogger
+import smt.db.AddAction.{HasUser, HasRemark}
 
 object SMTImpl {
 
@@ -26,6 +27,8 @@ object SMTImpl {
     lazy val hasDb: HasDb[HandlingDep] = _.db
     lazy val hasLogger: HasLogger[HandlingDep] = _.logger
     lazy val hasReporters: HasReporters[HandlingDep] = _.rps
+    lazy val hasUser: HasUser[HandlingDep] = _ => None
+    lazy val hasRemark: HasRemark[HandlingDep] = _ => None
   }
 
   def showDbState(db: Database, s: TaskStreams): Unit = {

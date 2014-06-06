@@ -4,13 +4,13 @@ import smt.util.ActionTypes
 import smt.{UpMoveState, DownMoveState, MoveState}
 import sbt.Logger
 
-object HasLogger {
+object DescribeAction {
   type HasLogger[α] = α => Logger
 }
 
 trait DescribeAction[T] extends ActionTypes[T] {
 
-  val hasLogger: HasLogger.HasLogger[T]
+  val hasLogger: DescribeAction.HasLogger[T]
 
   def describe(f: String): DKleisli[Unit] = {
     DKleisli(t => hasLogger(t).warn(f))

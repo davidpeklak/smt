@@ -8,6 +8,7 @@ import sbt.Logger
 import scalaz.-\/
 import smt.migration.{MigrationInfo, Migration, Up}
 import smt.db.ConnectionAction.HasConnection
+import smt.db.AddAction.{HasUser, HasRemark}
 
 case class HandlingDep(db: Database, rps: List[Reporter], logger: Logger)
 
@@ -52,9 +53,15 @@ trait StateHandling[T] extends DbAction[T] {
 
 trait Handling[T] extends DbAction[T] with DescribeAction[T] with ReportersAction[T] {
 
+  handling =>
 
-  lazy val connectionHandling = new ConnectionHandling[Connection] {
-    lazy val hasConnection: HasConnection[Connection] = identity
+  val hasUser: HasUser[T]
+  val hasRemark: HasRemark[T]
+
+  lazy val connectionHandling = new AddHandling[(T, Connection)] {
+    lazy val hasConnection: HasConnection[(T, Connection)] = _._2
+    lazy val hasUser: HasUser[(T, Connection)] = t => handling.hasUser(t._1)
+    lazy val hasRemark: HasRemark[(T, Connection)] = t => handling.hasRemark(t._1)
   }
 
   def applyMigrationsAndReport(ms: Seq[Migration], arb: Boolean, runTests: Boolean): DKleisli[Unit] = {
@@ -64,7 +71,7 @@ trait Handling[T] extends DbAction[T] with DescribeAction[T] with ReportersActio
           import namedMoveTypes._
           import namedMoveTypes.ewSyntax._
 
-          namedMoveTypes.liftE(connection()) >=> {
+          namedMoveTypes.liftE(connection()) >=! Tuple2[T, Connection] !=> {
             import connectionHandling.namedMoveTypes._
             liftE(connectionHandling.init()) >>  connectionHandling.applyMigrations(ms, arb, runTests) >> liftE(connectionHandling.close())
           }

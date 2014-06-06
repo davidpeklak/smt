@@ -26,6 +26,8 @@ object KleisliStack {
 
     trait TKleisliOps[M[+ _], D, A] extends Ops[TKleisli[M, D, A]] {
 
+      tKlseisliOps =>
+
       def runE: D => Stacked[M, A] = (d: D) => S.stack(S.unstack[({type λ[+α] = Kleisli[M, D, α]})#λ, A](self)(d))
 
       def swapStack: Kleisli[({type λ[+α] = Stacked[M, α]})#λ, D, A] = {
@@ -43,6 +45,26 @@ object KleisliStack {
         import syn._
 
         swapStackBack(this.swapStack >=> k.swapStack)
+      }
+
+      trait Combining[DA] {
+        val bc: Bind[({type λ[+α] = Stacked[M, α]})#λ]
+        val ccc: (D, A) => DA
+
+        def !=>[C](k: TKleisli[M, DA, C]): TKleisli[M, D, C] = {
+          val syn = tKleisliSyntax[M, DA]
+          import syn._
+
+          val kl: Kleisli[({type λ[+α] = Stacked[M, α]})#λ, D, A] = tKlseisliOps.swapStack
+          val klc = k.swapStack
+          val kl2: Kleisli[({type λ[+α] = Stacked[M, α]})#λ, D, C] = kleisli[({type λ[+α] = Stacked[M, α]})#λ, D, C]((a: D) => bc.bind(kl.run(a))(b => klc.run(ccc(a, b))))
+          swapStackBack(kl2)
+        }
+      }
+
+      def >=![DA](cc: (D, A) => DA)(implicit b: Bind[({type λ[+α] = Stacked[M, α]})#λ]): Combining[DA] = new Combining[DA] {
+        val bc = b
+        val ccc = cc
       }
     }
 
@@ -100,29 +122,3 @@ object KleisliStack {
 
   def EitherTWriterTKleisli[E, W] = new TKleisli[EitherTWriterTStackingTypes[E, W]#Data, EitherTWriterTStackingTypes[E, W]#Stacked](EitherTWriterTStacking[E, W])
 }
-/*
-
-object WriterTKleisli {
-
-  type WriterTKleisli[M[+ _], D, W, A] = WriterT[({type λ[+α] = Kleisli[M, D, α]})#λ, W, A]
-
-  trait WriterTKleisliOps[M[+ _], D, W, A] extends Ops[WriterTKleisli[M, D, W, A]] {
-
-    def runE: D => WriterT[M, W, A] = (d: D) => WriterT(self.run(d))
-
-    def >=>[B](k: WriterTKleisli[M, A, W, B])(implicit eb: Bind[({type λ[+α] = WriterT[M, W, α]})#λ]): WriterTKleisli[M, D, W, B] = {
-      val syn = eitherTKleisliSyntax[M, A, W]
-      import syn._
-      WriterT[({type λ[+α] = Kleisli[M, D, α]})#λ, W, B](kleisli((d: D) => eb.bind(this.runE(d))(k.runE).run))
-    }
-  }
-
-  trait WriterTKleisliSyntax[M[+ _], D, W] {
-    implicit def toWriterTKleisliOps[A](v: WriterTKleisli[M, D, W, A]): WriterTKleisliOps[M, D, W, A] = new WriterTKleisliOps[M, D, W, A] {
-      val self = v
-    }
-  }
-
-  def eitherTKleisliSyntax[M[+ _], D, W]: WriterTKleisliSyntax[M, D, W] = new WriterTKleisliSyntax[M, D, W] {}
-}
-*/

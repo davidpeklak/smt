@@ -6,9 +6,10 @@ import org.scalacheck.Gen
 import smt.report.Reporter
 import scalaz.{\/-, \/}
 import sbt.{Level, Logger}
-import smt.report.HasReporters.HasReporters
-import smt.describe.HasLogger.HasLogger
+import smt.report.ReportersAction.HasReporters
+import smt.describe.DescribeAction.HasLogger
 import smt.db.DbAction.HasDb
+import smt.db.AddAction.{HasUser, HasRemark}
 
 class HandlingTest extends FunSuite {
 
@@ -32,6 +33,8 @@ class HandlingTest extends FunSuite {
     lazy val hasDb: HasDb[HandlingDep] = _.db
     lazy val hasLogger: HasLogger[HandlingDep] = _.logger
     lazy val hasReporters: HasReporters[HandlingDep] = _.rps
+    lazy val hasUser: HasUser[HandlingDep] = _ => None
+    lazy val hasRemark: HasRemark[HandlingDep] = _ => None
   }
 
   test("apply one migration - verify reporter is called") {
