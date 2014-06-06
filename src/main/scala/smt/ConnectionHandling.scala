@@ -10,11 +10,6 @@ import smt.util.TraverseStackSafeSyntax
 import TraverseStackSafeSyntax._
 import smt.db._
 import smt.migration._
-import smt.migration.Group
-import smt.migration.MigrationInfo
-import scala.Some
-import smt.migration.Script
-import smt.migration.Migration
 import smt.MigrationHandling._
 import smt.migration.Group
 import smt.migration.MigrationInfo
@@ -23,8 +18,6 @@ import smt.migration.Script
 import smt.migration.Migration
 
 trait ConnectionHandling[T] extends ConnectionAction[T] {
-
-  import MigrationHandling._
 
   def now: Date = new Date
 
@@ -36,7 +29,6 @@ trait ConnectionHandling[T] extends ConnectionAction[T] {
   }
 
   def describe(migName: String, dms: DownMoveState, f: String): String = {
-    import dms._
     "Failed to fully revert migration " + migName + "\n" +
       "Applied the following down scripts: \n" +
       dms.appliedDowns.mkString("\n") + "\n" +

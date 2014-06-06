@@ -22,11 +22,13 @@ object SMT extends Plugin {
     transformedMigrations <<= (migrations, transformations) map transformedMigrationsImpl,
     showHashes <<= (transformedMigrations, streams) map showHashesImpl,
     showDbState <<= (database, streams) map SMTImpl.showDbState,
-    applyMigrations <<= (database, transformedMigrations, allowRollback, runTests, reporters, streams) map SMTImpl.applyMigrations,
-    migrateTo <<= inputTask((argTask: TaskKey[Seq[String]]) => (argTask, database, transformedMigrations, allowRollback, runTests, reporters, streams) map SMTImpl.migrateTo),
+    // applyMigrations <<= (database, transformedMigrations, allowRollback, runTests, reporters, user, streams) map SMTImpl.applyMigrations,
+    applyMigrations <<= inputTask((argTask: TaskKey[Seq[String]]) => (argTask, database, transformedMigrations, allowRollback, runTests, reporters, user, streams) map SMTImpl.applyMigrations),
+    migrateTo <<= inputTask((argTask: TaskKey[Seq[String]]) => (argTask, database, transformedMigrations, allowRollback, runTests, reporters, user, streams) map SMTImpl.migrateTo),
     showLatestCommon <<= (database, transformedMigrations, streams) map SMTImpl.showLatestCommon,
     runScript <<= inputTask((argTask: TaskKey[Seq[String]]) => (argTask, scriptSource, database, streams) map SMTImpl.runScript),
-    reporters := Seq[Reporter]()
+    reporters := Seq[Reporter](),
+    user := System.getProperty("user.name")
   )
 
   val migrationsSource = SettingKey[File]("migrations-source", "base-directory for migration files")
@@ -51,11 +53,13 @@ object SMT extends Plugin {
 
   val showLatestCommon = TaskKey[Unit]("show-latest-common", "show the latest common migration")
 
-  val applyMigrations = TaskKey[Unit]("apply-migrations", "apply the migrations to the DB")
+  val applyMigrations = InputKey[Unit]("apply-migrations", "apply the migrations to the DB")
 
   val migrateTo = InputKey[Unit]("migrate-to", "move db to the specified migration")
 
   val runScript = InputKey[Unit]("run-script", "run a script against the database")
 
   val reporters = SettingKey[Seq[Reporter]]("reporters", "sequence of reporters to notify about db changes")
+
+  val user = SettingKey[String]("user", "the operating user")
 }

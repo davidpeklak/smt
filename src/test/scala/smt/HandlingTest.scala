@@ -16,7 +16,7 @@ class HandlingTest extends FunSuite {
   class ReporterMock extends Reporter {
     var called: Boolean = false
 
-    def report(s: NamedMoveStates): String \/ Unit = \/-{
+    def report(s: NamedMoveStates): String \/ Unit = \/- {
       called = true
     }
   }
@@ -33,8 +33,8 @@ class HandlingTest extends FunSuite {
     lazy val hasDb: HasDb[HandlingDep] = _.db
     lazy val hasLogger: HasLogger[HandlingDep] = _.logger
     lazy val hasReporters: HasReporters[HandlingDep] = _.rps
-    lazy val hasUser: HasUser[HandlingDep] = _ => None
-    lazy val hasRemark: HasRemark[HandlingDep] = _ => None
+    lazy val hasUser: HasUser[HandlingDep] = _.user
+    lazy val hasRemark: HasRemark[HandlingDep] = _.remark
   }
 
   test("apply one migration - verify reporter is called") {
@@ -47,7 +47,7 @@ class HandlingTest extends FunSuite {
 
     val action = handling.applyMigrationsAndReport(ms = Seq(mig), arb = false, runTests = true)
 
-    action.run(HandlingDep(new DatabaseMock(new ConnectionMock), List(reporter), logger)).run
+    action.run(HandlingDep(new DatabaseMock(new ConnectionMock), List(reporter), logger, "fooUser", None)).run
 
     assert(reporter.called)
   }

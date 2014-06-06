@@ -17,7 +17,7 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
   lazy val addHandling = new AddHandling[Connection] {
     lazy val hasConnection: HasConnection[Connection] = identity
-    lazy val hasUser: HasUser[Connection] = _ => None
+    lazy val hasUser: HasUser[Connection] = _ => "fooUser"
     lazy val hasRemark: HasRemark[Connection] = _ => None
   }
 

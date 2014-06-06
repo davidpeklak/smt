@@ -34,7 +34,7 @@ trait ConnectionAction[T] extends ActionTypes[T] {
 }
 
 object AddAction {
-  type HasUser[α] = α => Option[String]
+  type HasUser[α] = α => String
 
   type HasRemark[α] = α => Option[String]
 }
@@ -43,5 +43,5 @@ trait AddAction[T] extends ConnectionAction[T] {
   val hasUser: AddAction.HasUser[T]
   val hasRemark: AddAction.HasRemark[T]
 
-  def add(name: String, hash: Seq[Byte], dateTime: Date): EDKleisli[Unit] = EDKleisli(t => hasConnection(t).add(new MigrationInfo(name, hash, dateTime, hasUser(t), hasRemark(t))))
+  def add(name: String, hash: Seq[Byte], dateTime: Date): EDKleisli[Unit] = EDKleisli(t => hasConnection(t).add(new MigrationInfo(name, hash, dateTime, Some(hasUser(t)), hasRemark(t))))
 }

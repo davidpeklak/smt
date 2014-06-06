@@ -27,8 +27,8 @@ object SMTImpl {
     lazy val hasDb: HasDb[HandlingDep] = _.db
     lazy val hasLogger: HasLogger[HandlingDep] = _.logger
     lazy val hasReporters: HasReporters[HandlingDep] = _.rps
-    lazy val hasUser: HasUser[HandlingDep] = _ => None
-    lazy val hasRemark: HasRemark[HandlingDep] = _ => None
+    lazy val hasUser: HasUser[HandlingDep] =  _.user
+    lazy val hasRemark: HasRemark[HandlingDep] =  _.remark
   }
 
   def showDbState(db: Database, s: TaskStreams): Unit = {
@@ -45,23 +45,38 @@ object SMTImpl {
     result.swap.foreach(failException(s))
   }
 
-  def applyMigrations(db: Database, ms: Seq[Migration], arb: Boolean, runTests: Boolean, rs: Seq[Reporter], s: TaskStreams): Unit = {
+  def applyMigrations(args: Seq[String], db: Database, ms: Seq[Migration], arb: Boolean, runTests: Boolean, rs: Seq[Reporter], user: String, s: TaskStreams): Unit = {
+    args match {
+      case Seq(remark) => doApplyMigrations(db, ms, arb, runTests, rs, user, Some(remark), s)
+      case Seq() => doApplyMigrations(db, ms, arb, runTests, rs, user, None, s)
+      case _ => throw new Exception("Too many arguments. Optional remark expected.")
+    }
+  }
+
+  def doApplyMigrations(db: Database, ms: Seq[Migration], arb: Boolean, runTests: Boolean, rs: Seq[Reporter], user: String, remark: Option[String], s: TaskStreams): Unit = {
     val action = handling.applyMigrationsAndReport(ms, arb, runTests)
-    val dep = HandlingDep(db, rs.toList, s.log)
+    val dep = HandlingDep(db, rs.toList, s.log, user, remark)
     action.run(dep).run
   }
 
-  def migrateTo(args: Seq[String], db: Database, ms: Seq[Migration], arb: Boolean, runTests: Boolean, rs: Seq[Reporter], s: TaskStreams) {
+  def migrateTo(args: Seq[String], db: Database, ms: Seq[Migration], arb: Boolean, runTests: Boolean, rs: Seq[Reporter], user: String, s: TaskStreams) {
+    def checkMig(target: String): Seq[Migration] = {
+      val mst = ms.reverse.dropWhile(_.name != target).reverse
+      if (mst.isEmpty) throw new Exception("No migration named '" + target + "' defined")
+      else mst
+    }
+
     args match {
       case Seq(target) => {
-        val mst = ms.reverse.dropWhile(_.name != target).reverse
-        if (mst.isEmpty) throw new Exception("No migration named '" + target + "' defined")
-        else {
-          applyMigrations(db, mst, arb, runTests, rs, s)
-        }
+        val mst = checkMig(target)
+        doApplyMigrations(db, mst, arb, runTests, rs, user, None, s)
+      }
+      case Seq(target, remark) => {
+        val mst = checkMig(target)
+        doApplyMigrations(db, mst, arb, runTests, rs, user, Some(remark), s)
       }
       case Seq() => throw new Exception("Name of a migration expected.")
-      case _ => throw new Exception("Too many arguments. Name of a migration expected.")
+      case _ => throw new Exception("Too many arguments. Name of a migration and optional remark expected.")
     }
   }
 

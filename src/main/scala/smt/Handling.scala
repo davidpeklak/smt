@@ -10,7 +10,7 @@ import smt.migration.{MigrationInfo, Migration, Up}
 import smt.db.ConnectionAction.HasConnection
 import smt.db.AddAction.{HasUser, HasRemark}
 
-case class HandlingDep(db: Database, rps: List[Reporter], logger: Logger)
+case class HandlingDep(db: Database, rps: List[Reporter], logger: Logger, user: String, remark: Option[String])
 
 trait StateHandling[T] extends DbAction[T] {
   
