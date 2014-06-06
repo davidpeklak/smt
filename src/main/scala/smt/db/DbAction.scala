@@ -2,13 +2,13 @@ package smt.db
 
 import smt.util.ActionTypes
 
-trait HasDb {
-  val db: Database
+object DbAction {
+  type HasDb[α] = α => Database
 }
 
-case class HasDbOnly(db: Database) extends HasDb
+trait DbAction[T] extends ActionTypes[T] {
 
-trait DbAction[T <: HasDb] extends ActionTypes[T] {
+  val hasDb: DbAction.HasDb[T]
 
-  def connection(): EDKleisli[Connection] = EDKleisli(_.db.connection())
+  def connection(): EDKleisli[Connection] = EDKleisli(hasDb(_).connection())
 }

@@ -4,16 +4,22 @@ import smt.util.ActionTypes
 import smt.{UpMoveState, DownMoveState, MoveState}
 import sbt.Logger
 
-object DescribeAction extends ActionTypes[Logger] {
+object HasLogger {
+  type HasLogger[α] = α => Logger
+}
+
+trait DescribeAction[T] extends ActionTypes[T] {
+
+  val hasLogger: HasLogger.HasLogger[T]
 
   def describe(f: String): DKleisli[Unit] = {
-    DKleisli(log => log.warn(f))
+    DKleisli(t => hasLogger(t).warn(f))
   }
 
   def describe(migName: String, ms: MoveState, f: String): DKleisli[Unit] = {
-    DKleisli(log => ms match {
-      case dms: DownMoveState => describeDms(migName, dms, f).foreach(l => log.warn(l))
-      case ums: UpMoveState => describeUms(migName, ums, f).foreach(l => log.warn(l))
+    DKleisli(t => ms match {
+      case dms: DownMoveState => describeDms(migName, dms, f).foreach(l => hasLogger(t).warn(l))
+      case ums: UpMoveState => describeUms(migName, ums, f).foreach(l => hasLogger(t).warn(l))
     })
   }
 

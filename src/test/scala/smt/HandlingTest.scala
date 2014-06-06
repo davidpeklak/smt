@@ -6,6 +6,9 @@ import org.scalacheck.Gen
 import smt.report.Reporter
 import scalaz.{\/-, \/}
 import sbt.{Level, Logger}
+import smt.report.HasReporters.HasReporters
+import smt.describe.HasLogger.HasLogger
+import smt.db.DbAction.HasDb
 
 class HandlingTest extends FunSuite {
 
@@ -25,6 +28,12 @@ class HandlingTest extends FunSuite {
     def success(message: => String): Unit = ()
   }
 
+  lazy val handling = new Handling[HandlingDep] {
+    lazy val hasDb: HasDb[HandlingDep] = _.db
+    lazy val hasLogger: HasLogger[HandlingDep] = _.logger
+    lazy val hasReporters: HasReporters[HandlingDep] = _.rps
+  }
+
   test("apply one migration - verify reporter is called") {
 
     val mig = migGen.apply(Gen.Params()).get // bochn
@@ -33,7 +42,7 @@ class HandlingTest extends FunSuite {
 
     val logger = new LoggerMock
 
-    val action = Handling.applyMigrationsAndReport(ms = Seq(mig), arb = false, runTests = true)
+    val action = handling.applyMigrationsAndReport(ms = Seq(mig), arb = false, runTests = true)
 
     action.run(HandlingDep(new DatabaseMock(new ConnectionMock), List(reporter), logger)).run
 

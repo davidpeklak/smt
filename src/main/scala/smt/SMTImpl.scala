@@ -1,12 +1,15 @@
 package smt
 
 import sbt._
-import smt.db.{HasDbOnly, Database}
+import smt.db.Database
 import sbt.Keys._
 import report.Reporter
 import java.io.File
 import smt.migration.ScriptParsers._
 import smt.migration.Migration
+import smt.db.DbAction.HasDb
+import smt.report.HasReporters.HasReporters
+import smt.describe.HasLogger.HasLogger
 
 object SMTImpl {
 
@@ -15,24 +18,32 @@ object SMTImpl {
     throw new Exception(e)
   }
 
-  val stateHandling = new StateHandling[HasDbOnly] { }
+  val stateHandling = new StateHandling[Database] {
+    lazy val hasDb: HasDb[Database] = identity
+  }
+
+  val handling = new Handling[HandlingDep] {
+    lazy val hasDb: HasDb[HandlingDep] = _.db
+    lazy val hasLogger: HasLogger[HandlingDep] = _.logger
+    lazy val hasReporters: HasReporters[HandlingDep] = _.rps
+  }
 
   def showDbState(db: Database, s: TaskStreams): Unit = {
-    val result = stateHandling.state().run(HasDbOnly(db)).run
+    val result = stateHandling.state().run(db).run
 
     result.foreach(_.foreach(st => s.log.info(st.toString)))
     result.swap.foreach(failException(s))
   }
 
   def showLatestCommon(db: Database, ms: Seq[Migration], s: TaskStreams): Unit = {
-    val result = stateHandling.latestCommon(ms zip MigrationHandling.hashMigrations(ms)).run(HasDbOnly(db)).run
+    val result = stateHandling.latestCommon(ms zip MigrationHandling.hashMigrations(ms)).run(db).run
 
     result.foreach(lco => s.log.info(lco.map(_.toString).getOrElse("None")))
     result.swap.foreach(failException(s))
   }
 
   def applyMigrations(db: Database, ms: Seq[Migration], arb: Boolean, runTests: Boolean, rs: Seq[Reporter], s: TaskStreams): Unit = {
-    val action = Handling.applyMigrationsAndReport(ms, arb, runTests)
+    val action = handling.applyMigrationsAndReport(ms, arb, runTests)
     val dep = HandlingDep(db, rs.toList, s.log)
     action.run(dep).run
   }
@@ -58,7 +69,7 @@ object SMTImpl {
         val fullPath = relPath.foldLeft[File](sourceDir)((p, s) => p / s)
         val script = OneFileOneScriptParser(fullPath).head
         val action = stateHandling.applyScript(script)
-        action.run(HasDbOnly(db)).run
+        action.run(db).run
       }
       case Seq() => throw new Exception("Path expected.")
       case _ => throw new Exception("Too many arguments. Path expected.")

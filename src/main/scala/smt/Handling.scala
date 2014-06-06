@@ -1,81 +1,72 @@
 package smt
 
 import smt.db._
-import smt.report.{ReporterAction, Reporter}
-import scalaz._
-import scalaz.concurrent.Future
-import smt.migration.{MigrationInfo, Migration}
+import smt.report.{ReportersAction, Reporter}
 import scalaz.Scalaz._
-import smt.util.ActionTypes
 import smt.describe.DescribeAction
 import sbt.Logger
 import scalaz.-\/
 import smt.migration.{MigrationInfo, Migration, Up}
+import smt.db.ConnectionAction.HasConnection
 
-trait HasLogger {
-  val logger: Logger
-}
+case class HandlingDep(db: Database, rps: List[Reporter], logger: Logger)
 
-case class HasLogOnly(logger: Logger)
-
-
-case class HandlingDep(db: Database, rps: List[Reporter], logger: Logger) extends HasDb
-
-trait StateHandling[T <: HasDb] extends ActionTypes[T] {
-
-  val dbAction = new DbAction[T] { }
-
-  val connectionAction = new ConnectionAction[HasConnectionOnly] { }
+trait StateHandling[T] extends DbAction[T] {
+  
+  lazy val connectionHandling = new ConnectionHandling[Connection] {
+    lazy val hasConnection: HasConnection[Connection] = identity
+  }
 
   def state(): EDKleisli[Seq[MigrationInfo]] = {
     import eSyntax._
 
-    dbAction.connection().map(HasConnectionOnly) >=> {
+    connection() >=> {
       for {
-        _ <- connectionAction.init()
-        migs <- connectionAction.state()
-        _ <- connectionAction.close()
+        _ <- connectionHandling.init()
+        migs <- connectionHandling.state()
+        _ <- connectionHandling.close()
       } yield migs
     }
   }
 
-  def latestCommon(mhs: Seq[(Migration, Seq[Byte])]): EDKleisli[Option[DBHandling.Common]] = {
+  def latestCommon(mhs: Seq[(Migration, Seq[Byte])]): EDKleisli[Option[connectionHandling.Common]] = {
     import eSyntax._
 
-    dbAction.connection().map(HasConnectionOnly) >=> {
+    connection() >=> {
       for {
-        _ <- connectionAction.init()
-        co <- DBHandling.latestCommon(mhs)
-        _ <- connectionAction.close()
+        _ <- connectionHandling.init()
+        co <-connectionHandling.latestCommon(mhs)
+        _ <- connectionHandling.close()
       } yield co
     }
   }
 
-  def applyScript(scr: migration.Script): dbAction.EDKleisli[Unit] = {
-    import dbAction.eSyntax._
+  def applyScript(scr: migration.Script): EDKleisli[Unit] = {
+    import eSyntax._
 
-    dbAction.connection().map(HasConnectionOnly) >=> {
-      connectionAction.applyScript(scr, Up) >> connectionAction.close()
+    connection() >=> {
+      connectionHandling.applyScript(scr, Up) >> connectionHandling.close()
     }
   }
 }
 
-object Handling extends ActionTypes[HandlingDep] {
+trait Handling[T] extends DbAction[T] with DescribeAction[T] with ReportersAction[T] {
 
-  val dbAction = new DbAction[HandlingDep] {}
 
-  val connectionAction = new ConnectionAction[HasConnectionOnly] { }
+  lazy val connectionHandling = new ConnectionHandling[Connection] {
+    lazy val hasConnection: HasConnection[Connection] = identity
+  }
 
   def applyMigrationsAndReport(ms: Seq[Migration], arb: Boolean, runTests: Boolean): DKleisli[Unit] = {
     for {
       nmse <- {
         {
-          import dbAction.namedMoveTypes._
-          import dbAction.namedMoveTypes.ewSyntax._
+          import namedMoveTypes._
+          import namedMoveTypes.ewSyntax._
 
-          dbAction.namedMoveTypes.liftE(dbAction.connection().map(HasConnectionOnly)) >=> {
-            import connectionAction.namedMoveTypes._
-            liftE(connectionAction.init()) >>  DBHandling.applyMigrations(ms, arb, runTests) >> liftE(connectionAction.close())
+          namedMoveTypes.liftE(connection()) >=> {
+            import connectionHandling.namedMoveTypes._
+            liftE(connectionHandling.init()) >>  connectionHandling.applyMigrations(ms, arb, runTests) >> liftE(connectionHandling.close())
           }
         }.run.run
       }
@@ -84,27 +75,13 @@ object Handling extends ActionTypes[HandlingDep] {
 
       _ <- {
         (nms.actions.lastOption, e) match {
-          case (Some(ms), -\/(f)) => {
-            DescribeAction.describe(ms._1, ms._2, f)
-              .local[HandlingDep](_.logger)
-          }
-          case (None, -\/(f)) => {
-            DescribeAction.describe(f)
-              .local[HandlingDep](_.logger)
-          }
+          case (Some(ms), -\/(f)) => describe(ms._1, ms._2, f)
+          case (None, -\/(f)) => describe(f)
           case _ => point(())
         }
       }
 
-      _ <- {
-        reportToAll(nms)
-          .local[HandlingDep](_.rps)
-
-      }
+      _ <- reportToAll(nms)
     } yield ()
-  }
-
-  def reportToAll(nms: NamedMoveStates): Kleisli[Future, List[Reporter], Unit] = {
-    Kleisli[Future, List[Reporter], Unit](_.traverse_(ReporterAction.report(nms).run))
   }
 }

@@ -16,7 +16,7 @@ import scala.Some
 import smt.migration.Script
 import smt.migration.Migration
 
-object DBHandling extends ConnectionAction[HasConnectionOnly] {
+trait ConnectionHandling[T] extends ConnectionAction[T] {
 
   import MigrationHandling._
 
