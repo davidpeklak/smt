@@ -16,4 +16,8 @@ class OracleConnection(connection: JConnection) extends SqlConnection(connection
   }
 
   def noDataCatcher[A]: Catcher[Seq[A]] = empty
+
+  def queryTableExistsString(table: String): String = "select TNAME from SYS.TAB where TNAME = '" + table + "'"
+
+  def queryMigrationTableHasColumnString(column: String): String = "select CNAME from SYS.COL where TNAME = '" + MIGRATION + "' and CNAME = '" + column + "'"
 }

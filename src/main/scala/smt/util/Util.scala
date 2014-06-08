@@ -11,12 +11,4 @@ object Util {
   def stringToBytes(s: String): Seq[Byte] = s.getBytes
 
   def bytesToString(bs: Seq[Byte]): String = new String(bs.toArray)
-
-  def mapResultSet[A](rs: ResultSet)(f: ResultSet => A): Stream[A] = {
-    if (rs.next) {
-      val a = f(rs)
-      a #:: mapResultSet(rs)(f)
-    }
-    else Empty
-  }
 }

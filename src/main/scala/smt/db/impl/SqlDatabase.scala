@@ -9,6 +9,7 @@ import collection.Map.empty
 import smt.db.{Connection, Database}
 import smt.migration.{Script, MigrationInfo, Direction}
 import scalaz.\/
+import scala.collection.immutable.Stream.Empty
 
 object SqlDatabase {
   def fromTryCatch[A](block: => A): String \/ A = {
@@ -39,12 +40,18 @@ object SqlConnection {
     val st = c.prepareCall(sql)
     catching(ca).andFinally(st.close())(f(st))
   }
+
+  def mapResultSet[A](rs: ResultSet)(f: ResultSet => A): Stream[A] = {
+    if (rs.next) {
+      val a = f(rs)
+      a #:: mapResultSet(rs)(f)
+    }
+    else Empty
+  }
 }
 
-abstract class SqlConnection(protected  val cnx: JConnection) extends Connection {
+abstract class SqlConnection(protected val cnx: JConnection) extends Connection {
   sqlConnection =>
-
-  def tableExistsCatcher(name: String): Catcher[Unit]
 
   def noDataCatcher[A]: Catcher[Seq[A]]
 
@@ -55,17 +62,23 @@ abstract class SqlConnection(protected  val cnx: JConnection) extends Connection
   val MIGRATION = "MIGRATION"
   val DOWN = "DOWN"
   val SCRIPT = "SCRIP"
+  val USER = "USR"
+  val REMARK = "REMARK"
 
   val createMigrationTableString = "CREATE TABLE " + MIGRATION + "( " + INDEX + " NUMBER(10), " + NAME + " VARCHAR(128), " +
-    HASH + " VARCHAR(40), " + TIME + " NUMBER(15) )"
+    HASH + " VARCHAR(40), " + TIME + " NUMBER(15), " + USER + " VARCHAR(100), " + REMARK + " VARCHAR(256) )"
 
-  val createDownsTableString = "CREATE TABLE " + DOWN + "( " + HASH + " VARCHAR(40), " + INDEX + " NUMBER(10), " +
+  val createDownTableString = "CREATE TABLE " + DOWN + "( " + HASH + " VARCHAR(40), " + INDEX + " NUMBER(10), " +
     SCRIPT + " CLOB, " + NAME + " VARCHAR(128) )"
 
   val queryMigrationTableString = "SELECT * FROM " + MIGRATION
 
   def insertMigrationString(mi: MigrationInfo, index: Long): String = {
-    "INSERT INTO " + MIGRATION + " VALUES ( " + index + ", '" + mi.name + "', '" + bytesToHex(mi.hash) + "', " + mi.dateTime.getTime + " )"
+    val cols = Seq(Some(INDEX), Some(NAME), Some(HASH), Some(TIME), mi.user.map(_ => USER), mi.remark.map(_ => REMARK)).flatten
+    val vals = Seq(Some(index.toString), Some(" '" + mi.name + "' "), Some(" '" + bytesToHex(mi.hash) + "' "), Some(mi.dateTime.getTime.toString), mi.user.map(" '" + _ + "' "), mi.remark.map(" '" + _ + "' ")).flatten
+
+    "INSERT INTO " + MIGRATION + "( " + cols.mkString(", ") + " )" +
+      " VALUES ( " + vals.mkString(", ") + " )"
   }
 
   def removeMigrationString(hash: Seq[Byte]): String = {
@@ -83,9 +96,43 @@ abstract class SqlConnection(protected  val cnx: JConnection) extends Connection
   import SqlDatabase._
   import SqlConnection._
 
+  def createMigrationTable() = withStatement(cnx)(_.execute(createMigrationTableString))
+
+  def createDownTable() = withStatement(cnx)(_.execute(createDownTableString))
+
+  def isResultSizeOne(selectString: String): Boolean = {
+    val tn = withStatement(cnx)(st => {
+      mapResultSet(st.executeQuery(selectString))(rs => ()).toList
+    }, noDataCatcher)
+    tn.size == 1
+  }
+
+  def queryTableExistsString(table: String): String
+
+  def queryMigrationTableHasColumnString(column: String): String
+
+  def doesMigrationTableExist(): Boolean = isResultSizeOne(queryTableExistsString(MIGRATION))
+
+  def doesMigrationTableHaveUserColumn(): Boolean = isResultSizeOne(queryMigrationTableHasColumnString(USER))
+
+  def doesMigrationTableHaveRemarkColumn(): Boolean = isResultSizeOne(queryMigrationTableHasColumnString(REMARK))
+
+  def alterMigrationTableAddColumnString(column: String) = "ALTER TABLE " + MIGRATION + " ADD ( " + column + ")"
+
+  def alterMigrationTableAddUserColumn() = withStatement(cnx)(_.execute(alterMigrationTableAddColumnString(USER + " VARCHAR(100)")))
+
+  def alterMigrationTableAddRemarkColumn() = withStatement(cnx)(_.execute(alterMigrationTableAddColumnString(REMARK + " VARCHAR(256)")))
+
+  def doesDownTableExist(): Boolean = isResultSizeOne(queryTableExistsString(DOWN))
+
   def init(): String \/ Unit = fromTryCatch {
-    withStatement(cnx)(_.execute(createMigrationTableString), tableExistsCatcher(MIGRATION))
-    withStatement(cnx)(_.execute(createDownsTableString), tableExistsCatcher(DOWN))
+    if (doesMigrationTableExist()) {
+      if (!doesMigrationTableHaveUserColumn()) alterMigrationTableAddUserColumn()
+      if (!doesMigrationTableHaveRemarkColumn()) alterMigrationTableAddRemarkColumn()
+    }
+    else createMigrationTable()
+
+    if (!doesDownTableExist()) createDownTable()
   }
 
   def add(migrationInfo: MigrationInfo): String \/ Unit = fromTryCatch {
@@ -145,8 +192,8 @@ abstract class SqlConnection(protected  val cnx: JConnection) extends Connection
         name = rs.getString(NAME),
         hash = hexToBytes(rs.getString(HASH)),
         dateTime = new Date(rs.getLong(TIME)),
-        None,
-        None
+        user = Option(rs.getString(USER)),
+        remark = Option(rs.getString(REMARK))
       ),
         rs.getLong(INDEX)
         )
