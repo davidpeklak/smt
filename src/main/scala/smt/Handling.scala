@@ -5,7 +5,7 @@ import smt.report.{ReportersAction, Reporter}
 import scalaz.Scalaz._
 import smt.describe.DescribeAction
 import sbt.Logger
-import scalaz.-\/
+import scalaz.{-\/, EitherT}
 import smt.migration.{MigrationInfo, Migration, Up}
 import smt.db.ConnectionAction.HasConnection
 import smt.db.AddAction.{HasUser, HasRemark}
@@ -19,35 +19,24 @@ trait StateHandling[T] extends DbAction[T] {
   }
 
   def state(): EDKleisli[Seq[MigrationInfo]] = {
-    import eSyntax._
+    import ekSyntax._
+    import connectionHandling.eSyntax._
 
-    connection() >=> {
-      for {
-        _ <- connectionHandling.init()
-        migs <- connectionHandling.state()
-        _ <- connectionHandling.close()
-      } yield migs
-    }
+    connection() >=> ((connectionHandling.init() >> connectionHandling.state()) andFinally connectionHandling.close())
   }
 
   def latestCommon(mhs: Seq[(Migration, Seq[Byte])]): EDKleisli[Option[connectionHandling.Common]] = {
-    import eSyntax._
+    import ekSyntax._
+    import connectionHandling.eSyntax._
 
-    connection() >=> {
-      for {
-        _ <- connectionHandling.init()
-        co <-connectionHandling.latestCommon(mhs)
-        _ <- connectionHandling.close()
-      } yield co
-    }
+    connection() >=> ((connectionHandling.init() >> connectionHandling.latestCommon(mhs)) andFinally connectionHandling.close())
   }
 
   def applyScript(scr: migration.Script): EDKleisli[Unit] = {
-    import eSyntax._
+    import ekSyntax._
+    import connectionHandling.eSyntax._
 
-    connection() >=> {
-      connectionHandling.applyScript(scr, Up) >> connectionHandling.close()
-    }
+    connection() >=> (connectionHandling.applyScript(scr, Up) andFinally connectionHandling.close())
   }
 }
 
@@ -64,31 +53,33 @@ trait Handling[T] extends DbAction[T] with DescribeAction[T] with ReportersActio
     lazy val hasRemark: HasRemark[(T, Connection)] = t => handling.hasRemark(t._1)
   }
 
-  def applyMigrationsAndReport(ms: Seq[Migration], arb: Boolean, runTests: Boolean): DKleisli[Unit] = {
-    for {
-      nmse <- {
-        {
-          import namedMoveTypes._
-          import namedMoveTypes.ewSyntax._
+  def applyMigrationsAndReport(ms: Seq[Migration], arb: Boolean, runTests: Boolean): EDKleisli[Unit] = {
+    EitherT[DKleisli, String, Unit](
+      for {
+        nmse <- {
+          {
+            import namedMoveTypes._
+            import namedMoveTypes.ewSyntax._
 
-          namedMoveTypes.liftE(connection()) >=! Tuple2[T, Connection] !=> {
-            import connectionHandling.namedMoveTypes._
-            liftE(connectionHandling.init()) >>  connectionHandling.applyMigrations(ms, arb, runTests) >> liftE(connectionHandling.close())
-          }
-        }.run.run
-      }
-
-      (nms, e) = nmse
-
-      _ <- {
-        (nms.actions.lastOption, e) match {
-          case (Some(ms), -\/(f)) => describe(ms._1, ms._2, f)
-          case (None, -\/(f)) => describe(f)
-          case _ => point(())
+            namedMoveTypes.liftE(connection()) >=! Tuple2[T, Connection] !=> {
+              import connectionHandling.namedMoveTypes._
+              liftE(connectionHandling.init()) >>  connectionHandling.applyMigrations(ms, arb, runTests) >> liftE(connectionHandling.close())
+            }
+          }.run.run
         }
-      }
 
-      _ <- reportToAll(nms)
-    } yield ()
+        (nms, e) = nmse
+
+        _ <- {
+          (nms.actions.lastOption, e) match {
+            case (Some(ms), -\/(f)) => describe(ms._1, ms._2, f)
+            case (None, -\/(f)) => describe(f)
+            case _ => point(())
+          }
+        }
+
+        _ <- reportToAll(nms)
+      } yield e
+    )
   }
 }

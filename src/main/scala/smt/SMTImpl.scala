@@ -11,13 +11,17 @@ import smt.db.DbAction.HasDb
 import smt.report.ReportersAction.HasReporters
 import smt.describe.DescribeAction.HasLogger
 import smt.db.AddAction.{HasUser, HasRemark}
+import scalaz.\/
 
 object SMTImpl {
 
-  private def failException(s: TaskStreams)(e: String) {
+  private def failException[T](s: TaskStreams)(e: String): T = {
     s.log.error(e)
     throw new Exception(e)
   }
+
+  private def throwLeft[T](s: TaskStreams)(te: String \/ T): T = te.fold[T]((e: String) => failException(s)(e), identity)
+
 
   val stateHandling = new StateHandling[Database] {
     lazy val hasDb: HasDb[Database] = identity
@@ -35,14 +39,14 @@ object SMTImpl {
     val result = stateHandling.state().run(db).run
 
     result.foreach(_.foreach(st => s.log.info(st.toString)))
-    result.swap.foreach(failException(s))
+    throwLeft(s)(result)
   }
 
   def showLatestCommon(db: Database, ms: Seq[Migration], s: TaskStreams): Unit = {
     val result = stateHandling.latestCommon(ms zip MigrationHandling.hashMigrations(ms)).run(db).run
 
     result.foreach(lco => s.log.info(lco.map(_.toString).getOrElse("None")))
-    result.swap.foreach(failException(s))
+    throwLeft(s)(result)
   }
 
   def applyMigrations(args: Seq[String], db: Database, ms: Seq[Migration], arb: Boolean, runTests: Boolean, rs: Seq[Reporter], user: String, s: TaskStreams): Unit = {
@@ -56,7 +60,7 @@ object SMTImpl {
   def doApplyMigrations(db: Database, ms: Seq[Migration], arb: Boolean, runTests: Boolean, rs: Seq[Reporter], user: String, remark: Option[String], s: TaskStreams): Unit = {
     val action = handling.applyMigrationsAndReport(ms, arb, runTests)
     val dep = HandlingDep(db, rs.toList, s.log, user, remark)
-    action.run(dep).run
+    throwLeft(s)(action.run(dep).run)
   }
 
   def migrateTo(args: Seq[String], db: Database, ms: Seq[Migration], arb: Boolean, runTests: Boolean, rs: Seq[Reporter], user: String, s: TaskStreams) {

@@ -67,5 +67,7 @@ trait ActionTypes[D] {
 
   val namedMoveTypes = writerTypes[NamedMoveStates]
 
-  val eSyntax = KleisliStack.EitherTKleisli[String].tKleisliSyntax[Future, D]
+  val ekSyntax = KleisliStack.EitherTKleisli[String].tKleisliSyntax[Future, D]
+
+  val eSyntax = EitherTHaerte.eitherTSyntax[DKleisli, String]
 }
