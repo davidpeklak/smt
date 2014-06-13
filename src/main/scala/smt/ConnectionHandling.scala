@@ -28,32 +28,6 @@ trait ConnectionHandling[T] extends ConnectionAction[T] {
     }
   }
 
-  def describe(migName: String, dms: DownMoveState, f: String): String = {
-    "Failed to fully revert migration " + migName + "\n" +
-      "Applied the following down scripts: \n" +
-      dms.appliedDowns.mkString("\n") + "\n" +
-      "The following down script crashed: \n" +
-      dms.crashedDown.getOrElse("(None)") + "\n" +
-      "Because of: " + f.toString + "\n" +
-      "Apply the intended effect of the crashed script manually before continuing."
-  }
-
-  def describe(migName: String, ums: UpMoveState, f: String): String = {
-    import ums._
-    val upsWithoutDowns = appliedUpsWithDowns.map(Some(_)).zipAll(appliedUps.map(Some(_)), None, None)
-      .dropWhile(t => t._1 == t._2).map(_._2.toSeq).flatten
-
-    "Failed to fully apply migration " + migName + "\n" +
-      "Applied the following up scripts: \n" +
-      ums.appliedUps.mkString("\n") + "\n" +
-      "The following up script crashed: \n" +
-      ums.crashedUp.getOrElse("(None)") + "\n" +
-      "Because of: " + f.toString + "\n" +
-      "The following up scripts have been applied without recording corresponding down scripts,\n" +
-      "revert them manually before continuing:" + "\n" +
-      upsWithoutDowns.map(_.name).mkString("\n")
-  }
-
   def latestCommon2(mis: Seq[MigrationInfo], ms: Seq[(Migration, Seq[Byte])]): Option[Common] = {
     (mis zip ms).takeWhile {
       case (MigrationInfo(_, hi, _, _, _), (_, h)) => hi == h
@@ -116,7 +90,7 @@ trait AddHandling[T] extends AddAction[T] with ConnectionHandling[T] {
 
     liftE(removeDowns(mid.mi.hash) >> remove(mid.mi.hash)) >>
       mid.downs.reverse.toList.traverse__(applyScriptAndWrite).recover((dms, f) => {
-        liftE(rewriteMigration(mid, dms, failHash(f)) >> failure(describe(mid.mi.name, dms, f)))
+        liftE(rewriteMigration(mid, dms, failHash(f)) >> failure(f))
       })
   }
 
@@ -156,7 +130,7 @@ trait AddHandling[T] extends AddAction[T] with ConnectionHandling[T] {
     }
 
     m.groups.toList.traverse__(applyGroup).conclude {
-      (ums, f) => liftE(finalize(ums.downsToApply, failHash(f)) >> failure(describe(m.name, ums, f)))
+      (ums, f) => liftE(finalize(ums.downsToApply, failHash(f)) >> failure(f))
     } {
       (ums, _) => liftE(finalize(ums.downsToApply, hash))
     }
