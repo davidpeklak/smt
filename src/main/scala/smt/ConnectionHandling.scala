@@ -121,21 +121,6 @@ trait AddHandling[T] extends AddAction[T] with ConnectionHandling[T] {
     } yield ()
   }
 
-  def applyMigration(m: Migration, hash: Seq[Byte]): upMoveTypes.EWDKleisli[Unit] = {
-    import upMoveTypes._
-    import EWSyntax._
-
-    def finalize(downs: List[Script], hash: Seq[Byte]): EDKleisli[Unit] = {
-      addDowns(hash, downs) >> add(m.name, hash, now)
-    }
-
-    m.groups.toList.traverse__(applyGroup).conclude {
-      (ums, f) => liftE(finalize(ums.downsToApply, failHash(f)) >> failure(f))
-    } {
-      (ums, _) => liftE(finalize(ums.downsToApply, hash))
-    }
-  }
-
   def applyMigrations(mhs: Seq[(Migration, Seq[Byte])], latestCommon: Option[Seq[Byte]], runTests: Boolean): namedMoveTypes.EWDKleisli[Unit] = {
     import namedMoveTypes._
     import upMoveTypes.EWSyntax._
@@ -150,4 +135,18 @@ trait AddHandling[T] extends AddAction[T] with ConnectionHandling[T] {
     }
   }
 
+  def applyMigration(m: Migration, hash: Seq[Byte]): upMoveTypes.EWDKleisli[Unit] = {
+    import upMoveTypes._
+    import EWSyntax._
+
+    def finalize(downs: List[Script], hash: Seq[Byte]): EDKleisli[Unit] = {
+      addDowns(hash, downs) >> add(m.name, hash, now)
+    }
+
+    m.groups.toList.traverse__(applyGroup).conclude {
+      (ums, f) => liftE(finalize(ums.downsToApply, failHash(f)) >> failure(f))
+    } {
+      (ums, _) => liftE(finalize(ums.downsToApply, hash))
+    }
+  }
 }

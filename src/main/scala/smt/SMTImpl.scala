@@ -91,7 +91,8 @@ object SMTImpl {
         val fullPath = relPath.foldLeft[File](sourceDir)((p, s) => p / s)
         val script = OneFileOneScriptParser(fullPath).head
         val action = stateHandling.applyScript(script)
-        action.run(db).run
+        val result = action.run(db).run
+        throwLeft(s)(result)
       }
       case Seq() => throw new Exception("Path expected.")
       case _ => throw new Exception("Too many arguments. Path expected.")
