@@ -35,10 +35,18 @@ object SMTImpl {
     lazy val hasRemark: HasRemark[HandlingDep] =  _.remark
   }
 
-  def showDbState(db: Database, s: TaskStreams): Unit = {
-    val result = stateHandling.state().run(db).run
+  def showDbState(db: Database, ms: Seq[Migration], s: TaskStreams): Unit = {
+    /*val result = stateHandling.state().run(db).run
 
     result.foreach(_.foreach(st => s.log.info(st.toString)))
+    throwLeft(s)(result)*/
+
+    val result = stateHandling.common(ms zip MigrationHandling.hashMigrations(ms)).run(db).run
+
+    result.foreach(co => {
+      co.common.foreach(st => s.log.info(st.toString))
+      co.diffOnDb.foreach(st => s.log.info("(!) " + st.toString))
+    })
     throwLeft(s)(result)
   }
 

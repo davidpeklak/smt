@@ -32,6 +32,13 @@ trait StateHandling[T] extends DbAction[T] {
     connection() >=> ((connectionHandling.init() >> connectionHandling.latestCommon(mhs)) andFinally connectionHandling.close())
   }
 
+  def common(mhs: Seq[(Migration, Seq[Byte])]): EDKleisli[connectionHandling.CommonMigrations] = {
+    import ekSyntax._
+    import connectionHandling.eSyntax._
+
+    connection() >=> ((connectionHandling.init() >> connectionHandling.common(mhs)) andFinally connectionHandling.close())
+  }
+
   def applyScript(scr: migration.Script): EDKleisli[Unit] = {
     import ekSyntax._
     import connectionHandling.eSyntax._

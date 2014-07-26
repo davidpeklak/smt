@@ -23,21 +23,41 @@ trait ConnectionHandling[T] extends ConnectionAction[T] {
 
   case class Common(db: MigrationInfo, currentName: String) {
     override def toString: String = {
-      val seq = Seq(Some(currentName + " (on db: " + db.name), Some(bytesToHex(db.hash)), Some(db.dateTime), db.user, db.remark).flatten
+      val seq = Seq(Some(currentName + " (on db: " + db.name), Some(bytesToHex(db.hash)), Some(db.dateTime.toString), db.user, db.remark).flatten
       "CommonMigrationInfo(" + seq.mkString(", ") + ")"
     }
   }
 
   def latestCommon2(mis: Seq[MigrationInfo], ms: Seq[(Migration, Seq[Byte])]): Option[Common] = {
-    (mis zip ms).takeWhile {
+    common2(mis, ms).common.lastOption
+  }
+
+  case class CommonMigrations(
+                               common: Seq[Common],
+                               diffOnDb: Seq[MigrationInfo],
+                               diffOnRepo: Seq[(Migration, Seq[Byte])]
+                               )
+
+  def common2(mis: Seq[MigrationInfo], ms: Seq[(Migration, Seq[Byte])]): CommonMigrations = {
+    val (common, different) = (mis zip ms).span {
       case (MigrationInfo(_, hi, _, _, _), (_, h)) => hi == h
-    }.lastOption.map {
-      case (mi, (m, _)) => Common(mi, m.name)
     }
+
+    CommonMigrations(
+      common = common.map {
+        case (mi, (m, _)) => Common(mi, m.name)
+      },
+      diffOnDb = different.map(_._1),
+      diffOnRepo = different.map(_._2)
+    )
   }
 
   def latestCommon(mhs: Seq[(Migration, Seq[Byte])]): EDKleisli[Option[Common]] = {
     state().map(latestCommon2(_, mhs))
+  }
+
+  def common(mhs: Seq[(Migration, Seq[Byte])]): EDKleisli[CommonMigrations] = {
+    state().map(common2(_, mhs))
   }
 
   case class MigrationInfoWithDowns(mi: MigrationInfo, downs: Seq[Script])

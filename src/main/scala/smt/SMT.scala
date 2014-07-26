@@ -21,7 +21,7 @@ object SMT extends Plugin {
   lazy val smtSettings = Seq(
     transformedMigrations <<= (migrations, transformations) map transformedMigrationsImpl,
     showHashes <<= (transformedMigrations, streams) map showHashesImpl,
-    showDbState <<= (database, streams) map SMTImpl.showDbState,
+    showDbState <<= (database, transformedMigrations, streams) map SMTImpl.showDbState,
     // applyMigrations <<= (database, transformedMigrations, allowRollback, runTests, reporters, user, streams) map SMTImpl.applyMigrations,
     applyMigrations <<= inputTask((argTask: TaskKey[Seq[String]]) => (argTask, database, transformedMigrations, allowRollback, runTests, reporters, user, streams) map SMTImpl.applyMigrations),
     migrateTo <<= inputTask((argTask: TaskKey[Seq[String]]) => (argTask, database, transformedMigrations, allowRollback, runTests, reporters, user, streams) map SMTImpl.migrateTo),
