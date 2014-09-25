@@ -5,7 +5,7 @@ import smt.db.Database
 import sbt.Keys._
 import report.Reporter
 import java.io.File
-import smt.migration.ScriptParsers._
+import smt.migration.FileSplitters._
 import smt.migration.Migration
 import smt.db.DbAction.HasDb
 import smt.report.ReportersAction.HasReporters
@@ -97,7 +97,7 @@ object SMTImpl {
       case Seq(dir) => {
         val relPath = IO.pathSplit(dir).toSeq
         val fullPath = relPath.foldLeft[File](sourceDir)((p, s) => p / s)
-        val script = OneFileOneScriptParser(fullPath).head
+        val script = OneFileOneScriptSplitter(fullPath).head
         val action = stateHandling.applyScript(script)
         val result = action.run(db).run
         throwLeft(s)(result)

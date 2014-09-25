@@ -3,7 +3,7 @@ package smt
 import org.scalatest.FunSuite
 import org.scalacheck.Gen._
 import org.scalacheck.Prop.forAll
-import smt.migration.ScriptParsers
+import smt.migration.FileSplitters
 
 class ScriptParsersTest extends FunSuite with PropTesting {
   test("splitString") {
@@ -29,7 +29,7 @@ class ScriptParsersTest extends FunSuite with PropTesting {
 
     val p = forAll(dataGen)(data => {
       import data._
-      ScriptParsers.splitString(sep)(script) == expected
+      FileSplitters.splitString(sep)(script) == expected
     })
 
     check(p)

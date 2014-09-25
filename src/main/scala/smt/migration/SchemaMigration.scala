@@ -1,81 +1,33 @@
 package smt.migration
 
 import sbt._
-import ScriptParsers._
+import FileSplitters._
+import DirCrawlers._
 
-/**
- * Assumes the following directory structure:
- * + dir
- * | + table
- * | | + down
- * | | | table1down.sql
- * | | | table2down.sql
- * | | + up
- * | | | table1up.sql
- * | | | table2up.sql
- * | + function
- * | | + down
- * | | | function1down.sql
- * | | | function2down.sql
- * | | + up
- * | | | function1up.sql
- * | | | function2up.sql
- * | + package
- * | | + down
- * | | | package1down.sql
- * | | | package2down.sql
- * | | + up
- * | | | package1up.sql
- * | | | package2up.sql
- * | + procedure
- * | | + down
- * | | | procedure1down.sql
- * | | | procedure2down.sql
- * | | + up
- * | | | procedure1up.sql
- * | | | procedure2up.sql
- * | + view
- * | | + down
- * | | | view1down.sql
- * | | | view2down.sql
- * | | + up
- * | | | view1up.sql
- * | | | view2up.sql
- * | + other
- * | | + down
- * | | | other1down.sql
- * | | | other2down.sql
- * | | + up
- * | | | other1up.sql
- * | | | other2up.sql
- */
 object SchemaMigration {
   def apply(name: String, dir: File): Migration = {
-    apply(name, Seq(dir), Seq(), OneFileOneScriptParser)
+    apply(name, Seq(dir), Seq(), ClassicDirCrawler, OneFileOneScriptSplitter)
   }
 
   def apply(name: String, dirs: Seq[File]): Migration = {
-    apply(name, dirs, Seq(), OneFileOneScriptParser)
+    apply(name, dirs, Seq(), ClassicDirCrawler, OneFileOneScriptSplitter)
   }
 
   def apply(name: String, dir: File, tests: Seq[Test]): Migration = {
-    apply(name, Seq(dir), tests, OneFileOneScriptParser)
+    apply(name, Seq(dir), tests, ClassicDirCrawler, OneFileOneScriptSplitter)
   }
 
   def apply(name: String, dirs: Seq[File], tests: Seq[Test]): Migration = {
-    apply(name, dirs, tests, OneFileOneScriptParser)
+    apply(name, dirs, tests, ClassicDirCrawler, OneFileOneScriptSplitter)
   }
 
-  def apply(name: String, dirs: Seq[File], tests: Seq[Test], scriptParser: File => Seq[Script]): Migration = {
+  def apply(name: String,
+            dirs: Seq[File],
+            tests: Seq[Test],
+            dirCrawler: File => Seq[File], // takes a directory and returns a sequence of subdirectories where the files are expected
+            fileSplitter: File => Seq[Script] // takes a file and splits it into a sequence of scripts
+             ): Migration = {
     IO.assertDirectories(dirs: _*)
-
-    def checkDirectory(file: File): Option[File] = {
-      if (file.exists()) {
-        IO.assertDirectory(file)
-        Some(file)
-      }
-      else None
-    }
 
     def upsAndDowns(dir: File): Seq[Group] = {
       val up = dir / "up"
@@ -97,7 +49,7 @@ object SchemaMigration {
 
       val upDownFiles = upFiles zip downFiles
       val groups = upDownFiles.map {
-        case (upFile, downFile) => Group(ups = scriptParser(upFile), downs = scriptParser(downFile).reverse)
+        case (upFile, downFile) => Group(ups = fileSplitter(upFile), downs = fileSplitter(downFile).reverse)
       }
 
       groups
@@ -107,13 +59,10 @@ object SchemaMigration {
       dir.listFiles.toSeq.sortBy(_.getName)
     }
 
-    val subdirNames = Seq("table", "function", "package", "procedure", "view", "other")
-
     val groups =
       for {
         dir <- dirs
-        subdirname <- subdirNames
-        subdir <- checkDirectory(dir / subdirname).toSeq
+        subdir <- dirCrawler(dir)
         group <- upsAndDowns(subdir)
       } yield group
 
@@ -123,19 +72,36 @@ object SchemaMigration {
 
 object SepSchemaMigration {
   def apply(sep: String, name: String, dir: File): Migration = {
-    SchemaMigration(name, Seq(dir), Seq(), OneFileManyScriptsParser("\n" + sep))
+    SchemaMigration(name, Seq(dir), Seq(), ClassicDirCrawler, OneFileManyScriptsSplitter("\n" + sep))
   }
 
   def apply(sep: String, name: String, dirs: Seq[File]): Migration = {
-    SchemaMigration(name, dirs, Seq(), OneFileManyScriptsParser("\n" + sep))
+    SchemaMigration(name, dirs, Seq(), ClassicDirCrawler, OneFileManyScriptsSplitter("\n" + sep))
   }
 
   def apply(sep: String, name: String, dir: File, tests: Seq[Test]): Migration = {
-    SchemaMigration(name, Seq(dir), tests, OneFileManyScriptsParser("\n" + sep))
+    SchemaMigration(name, Seq(dir), tests, ClassicDirCrawler, OneFileManyScriptsSplitter("\n" + sep))
   }
 
   def apply(sep: String, name: String, dirs: Seq[File], tests: Seq[Test]): Migration = {
-    SchemaMigration(name, dirs, tests, OneFileManyScriptsParser("\n" + sep))
+    SchemaMigration(name, dirs, tests, ClassicDirCrawler, OneFileManyScriptsSplitter("\n" + sep))
   }
 }
 
+object OneDirSepSchemaMigration {
+  def apply(sep: String, name: String, dir: File): Migration = {
+    SchemaMigration(name, Seq(dir), Seq(), IdentityDirCrawler, OneFileManyScriptsSplitter("\n" + sep))
+  }
+
+  def apply(sep: String, name: String, dirs: Seq[File]): Migration = {
+    SchemaMigration(name, dirs, Seq(), IdentityDirCrawler, OneFileManyScriptsSplitter("\n" + sep))
+  }
+
+  def apply(sep: String, name: String, dir: File, tests: Seq[Test]): Migration = {
+    SchemaMigration(name, Seq(dir), tests, IdentityDirCrawler, OneFileManyScriptsSplitter("\n" + sep))
+  }
+
+  def apply(sep: String, name: String, dirs: Seq[File], tests: Seq[Test]): Migration = {
+    SchemaMigration(name, dirs, tests, IdentityDirCrawler, OneFileManyScriptsSplitter("\n" + sep))
+  }
+}

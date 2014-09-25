@@ -4,9 +4,9 @@ import sbt._
 import scala.annotation.tailrec
 import smt.util.Util._
 
-object ScriptParsers {
+object FileSplitters {
 
-  def OneFileOneScriptParser(file: File): Seq[Script] = {
+  def OneFileOneScriptSplitter(file: File): Seq[Script] = {
     Seq(Script(name = file.getName, content = bytesToString(IO.readBytes(file))))
   }
 
@@ -29,7 +29,7 @@ object ScriptParsers {
     }
   }
 
-  def OneFileManyScriptsParser(sep: String)(file: File): Seq[Script] = {
+  def OneFileManyScriptsSplitter(sep: String)(file: File): Seq[Script] = {
     val content = bytesToString(IO.readBytes(file))
     val scriptContents = splitString(sep)(content)
     scriptContents match {
