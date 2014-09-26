@@ -4,16 +4,21 @@ import sbt.Keys._
 import java.security.MessageDigest
 import smt.util.Util
 import Util._
-import smt.migration.{Script, Migration}
+import smt.migration.{Script, Migration, Group}
 
 object MigrationHandling {
   type Transformation = String => String
 
+  def transformGroup(ts: Seq[Transformation])(group: Group): Group = {
+    group.copy(ups = transformScripts(ts)(group.ups), downs = transformScripts(ts)(group.downs))
+  }
+
+  def transformScripts(ts: Seq[Transformation])(ss: Seq[Script]): Seq[Script] = ss.map(s => {
+    ts.foldLeft(s)((s, t) => s.copy(content = t(s.content)))
+  })
+
   def transformedMigrationsImpl(ms: Seq[Migration], ts: Seq[Transformation]): Seq[Migration] = {
-    def transformScripts(ss: Seq[Script]): Seq[Script] = ss.map(s => {
-      ts.foldLeft(s)((s, t) => s.copy(content = t(s.content)))
-    })
-    ms.map(m => m.copy(groups =  m.groups.map( group => group.copy(ups = transformScripts(group.ups), downs = transformScripts(group.downs)))))
+    ms.map(m => m.copy(groups =  m.groups.map(transformGroup(ts))))
   }
 
   def showHashesImpl(ms: Seq[Migration], s: TaskStreams): Unit = {
