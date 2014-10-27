@@ -7,19 +7,19 @@ import smt.MigrationHandling
 
 object SchemaMigration {
   def apply(name: String, dir: File): Migration = {
-    apply(name, Seq(dir), Seq(), ClassicDirCrawler, OneFileOneScriptSplitter, identity)
+    apply(name, Seq(dir), Seq(), ClassicDirCrawler, OneFileOneScriptSplitter, identity, identity)
   }
 
   def apply(name: String, dirs: Seq[File]): Migration = {
-    apply(name, dirs, Seq(), ClassicDirCrawler, OneFileOneScriptSplitter, identity)
+    apply(name, dirs, Seq(), ClassicDirCrawler, OneFileOneScriptSplitter, identity, identity)
   }
 
   def apply(name: String, dir: File, tests: Seq[Test]): Migration = {
-    apply(name, Seq(dir), tests, ClassicDirCrawler, OneFileOneScriptSplitter, identity)
+    apply(name, Seq(dir), tests, ClassicDirCrawler, OneFileOneScriptSplitter, identity, identity)
   }
 
   def apply(name: String, dirs: Seq[File], tests: Seq[Test]): Migration = {
-    apply(name, dirs, tests, ClassicDirCrawler, OneFileOneScriptSplitter, identity)
+    apply(name, dirs, tests, ClassicDirCrawler, OneFileOneScriptSplitter, identity,identity)
   }
 
   def apply(name: String,
@@ -27,7 +27,8 @@ object SchemaMigration {
             tests: Seq[Test],
             dirCrawler: File => Seq[File], // takes a directory and returns a sequence of subdirectories where the files are expected
             fileSplitter: File => Seq[Script], // takes a file and splits it into a sequence of scripts
-            transformation: String => String // a specific transformation of scripts for this migration
+            downTransformation: String => String, // a specific transformation of down scripts for this migration
+            upTransformation: String => String // a specific transformation of up scripts for this migration
              ): Migration = {
     IO.assertDirectories(dirs: _*)
 
@@ -54,7 +55,7 @@ object SchemaMigration {
         case (upFile, downFile) => Group(ups = fileSplitter(upFile), downs = fileSplitter(downFile).reverse)
       }
 
-      groups.map(MigrationHandling.transformGroup(Seq(transformation)))
+      groups.map(MigrationHandling.transformGroup(Seq(downTransformation), Seq(upTransformation)))
     }
 
     def listFilesAlphabetically(dir: File): Seq[File] = {
@@ -74,36 +75,36 @@ object SchemaMigration {
 
 object SepSchemaMigration {
   def apply(sep: String, name: String, dir: File): Migration = {
-    SchemaMigration(name, Seq(dir), Seq(), ClassicDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity)
+    SchemaMigration(name, Seq(dir), Seq(), ClassicDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity, identity)
   }
 
   def apply(sep: String, name: String, dirs: Seq[File]): Migration = {
-    SchemaMigration(name, dirs, Seq(), ClassicDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity)
+    SchemaMigration(name, dirs, Seq(), ClassicDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity, identity)
   }
 
   def apply(sep: String, name: String, dir: File, tests: Seq[Test]): Migration = {
-    SchemaMigration(name, Seq(dir), tests, ClassicDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity)
+    SchemaMigration(name, Seq(dir), tests, ClassicDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity, identity)
   }
 
   def apply(sep: String, name: String, dirs: Seq[File], tests: Seq[Test]): Migration = {
-    SchemaMigration(name, dirs, tests, ClassicDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity)
+    SchemaMigration(name, dirs, tests, ClassicDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity, identity)
   }
 }
 
 object OneDirSepSchemaMigration {
   def apply(sep: String, name: String, dir: File): Migration = {
-    SchemaMigration(name, Seq(dir), Seq(), IdentityDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity)
+    SchemaMigration(name, Seq(dir), Seq(), IdentityDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity, identity)
   }
 
   def apply(sep: String, name: String, dirs: Seq[File]): Migration = {
-    SchemaMigration(name, dirs, Seq(), IdentityDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity)
+    SchemaMigration(name, dirs, Seq(), IdentityDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity, identity)
   }
 
   def apply(sep: String, name: String, dir: File, tests: Seq[Test]): Migration = {
-    SchemaMigration(name, Seq(dir), tests, IdentityDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity)
+    SchemaMigration(name, Seq(dir), tests, IdentityDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity, identity)
   }
 
   def apply(sep: String, name: String, dirs: Seq[File], tests: Seq[Test]): Migration = {
-    SchemaMigration(name, dirs, tests, IdentityDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity)
+    SchemaMigration(name, dirs, tests, IdentityDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity, identity)
   }
 }
