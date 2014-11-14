@@ -19,7 +19,7 @@ object SMT extends Plugin {
   )
 
   lazy val smtSettings = Seq(
-    transformedMigrations <<= (migrations, transformations) map transformedMigrationsImpl,
+    transformedMigrations <<= (migrations, transformations, transformations) map transformedMigrationsImpl,
     showHashes <<= (transformedMigrations, streams) map showHashesImpl,
     showDbState <<= (database, transformedMigrations, streams) map SMTImpl.showDbState,
     // applyMigrations <<= (database, transformedMigrations, allowRollback, runTests, reporters, user, streams) map SMTImpl.applyMigrations,

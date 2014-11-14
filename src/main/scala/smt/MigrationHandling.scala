@@ -9,16 +9,16 @@ import smt.migration.{Script, Migration, Group}
 object MigrationHandling {
   type Transformation = String => String
 
-  def transformGroup(ts: Seq[Transformation])(group: Group): Group = {
-    group.copy(ups = transformScripts(ts)(group.ups), downs = transformScripts(ts)(group.downs))
+  def transformGroup(downTs: Seq[Transformation], upTs: Seq[Transformation])(group: Group): Group = {
+    group.copy(ups = transformScripts(upTs)(group.ups), downs = transformScripts(downTs)(group.downs))
   }
 
   def transformScripts(ts: Seq[Transformation])(ss: Seq[Script]): Seq[Script] = ss.map(s => {
     ts.foldLeft(s)((s, t) => s.copy(content = t(s.content)))
   })
 
-  def transformedMigrationsImpl(ms: Seq[Migration], ts: Seq[Transformation]): Seq[Migration] = {
-    ms.map(m => m.copy(groups =  m.groups.map(transformGroup(ts))))
+  def transformedMigrationsImpl(ms: Seq[Migration], downTs: Seq[Transformation], upTs: Seq[Transformation]): Seq[Migration] = {
+    ms.map(m => m.copy(groups =  m.groups.map(transformGroup(downTs, upTs))))
   }
 
   def showHashesImpl(ms: Seq[Migration], s: TaskStreams): Unit = {
