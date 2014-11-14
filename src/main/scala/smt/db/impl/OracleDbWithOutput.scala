@@ -3,6 +3,7 @@ package smt.db.impl
 import java.sql.{Connection => JConnection}
 import smt.db.Database
 import smt.migration.{Script, Direction}
+import sbt.Logger
 import scalaz.\/
 
 class OracleDatabaseWithOutput(connection: => JConnection) extends SqlDatabase(
@@ -13,7 +14,7 @@ class OracleConnectionWithOutput(connection: JConnection) extends OracleConnecti
   import SqlDatabase._
   import SqlConnection._
 
-  private def doApplyScript(script: Script) {
+  private def doApplyScript(logger: Logger)(script: Script) {
     withStatement(cnx)(_.execute("begin dbms_output.enable(1000000); end;"))
 
     withStatement(cnx)(_.execute(script.content))
@@ -40,20 +41,20 @@ class OracleConnectionWithOutput(connection: JConnection) extends OracleConnecti
       {
         stm.setInt( 1, 32000 )
         stm.executeUpdate()
-        println( stm.getString(3) )
+        logger.info( stm.getString(3) )
       } while (stm.getInt(2) != 1)
     })
 
     withStatement(cnx)(_.execute("begin dbms_output.disable; end;"))
   }
 
-  override def applyScript(script: Script, direction: Direction): String \/ Unit = fromTryCatch {
-    println("applying " + direction + " script: " + script)
-    doApplyScript(script)
+  override def applyScript(logger: Logger)(script: Script, direction: Direction): String \/ Unit = fromTryCatch {
+    logger.info("applying " + direction + " script: " + script)
+    doApplyScript(logger)(script)
   }
 
-  override def testScript(script: Script): String \/ Unit = fromTryCatch {
-    println("applying test script: " + script)
-    doApplyScript(script)
+  override def testScript(logger: Logger)(script: Script): String \/ Unit = fromTryCatch {
+    logger.info("applying test script: " + script)
+    doApplyScript(logger)(script)
   }
 }

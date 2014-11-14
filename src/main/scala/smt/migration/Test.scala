@@ -4,11 +4,12 @@ import java.io.File
 import smt.db.Connection
 import FileSplitters._
 import scalaz.\/
+import sbt.Logger
 
-case class Test (run: Connection => String \/ Unit)
+case class Test (run: Connection => Logger => String \/ Unit)
 
 object ScriptTest {
-  def scriptTest(script: Script): Test = Test(db => db.testScript(script))
+  def scriptTest(script: Script): Test = Test(db => logger => db.testScript(logger)(script))
 
   def apply(file: File): Seq[Test] = OneFileOneScriptSplitter(file).map(scriptTest)
 

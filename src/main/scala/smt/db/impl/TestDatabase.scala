@@ -5,6 +5,7 @@ import Util._
 import smt.db.{Connection, Database}
 import smt.migration.{Script, MigrationInfo, Direction}
 import scalaz.{\/-, \/}
+import sbt.Logger
 
 class TestDatabase extends Database {
   def connection(): \/[String, Connection] = {
@@ -18,51 +19,52 @@ class TestConnection extends Connection {
 
   private var ds: Map[Seq[Byte], Seq[Script]] = Map()
 
-  def init(): String \/ Unit = {
+  def init(logger: Logger)(): String \/ Unit = {
+    logger.info("initializing ")
     \/-()
   }
 
-  def add(migrationInfo: MigrationInfo): String \/ Unit = {
-    println("adding " + migrationInfo)
+  def add(logger: Logger)(migrationInfo: MigrationInfo): String \/ Unit = {
+    logger.info("adding " + migrationInfo)
     s = s :+ migrationInfo
     \/-()
   }
 
-  def addDowns(migHash: Seq[Byte], downs: Seq[Script]): String \/ Unit = {
-    println("adding " + downs)
+  def addDowns(logger: Logger)(migHash: Seq[Byte], downs: Seq[Script]): String \/ Unit = {
+    logger.info("adding " + downs)
     ds = ds + (migHash -> downs)
     \/-()
   }
 
-  def remove(hash: Seq[Byte]): String \/ Unit = {
-    println("removing " + bytesToHex(hash))
+  def remove(logger: Logger)(hash: Seq[Byte]): String \/ Unit = {
+    logger.info("removing " + bytesToHex(hash))
     s = s.filterNot(_.hash == hash)
     \/-()
   }
 
-  def removeDowns(migHash: Seq[Byte]): String \/ Unit = {
-    println("removing downs" + bytesToHex(migHash))
+  def removeDowns(logger: Logger)(migHash: Seq[Byte]): String \/ Unit = {
+    logger.info("removing downs" + bytesToHex(migHash))
     ds = ds - migHash
     \/-()
   }
 
-  def applyScript(script: Script, direction: Direction): String \/ Unit = {
-    println("applying " + direction + " " + script)
+  def applyScript(logger: Logger)(script: Script, direction: Direction): String \/ Unit = {
+    logger.info("applying " + direction + " " + script)
     \/-()
   }
 
 
-  def testScript(script: Script): String \/ Unit = {
-    println("applying test " + script)
+  def testScript(logger: Logger)(script: Script): String \/ Unit = {
+    logger.info("applying test " + script)
     \/-()
   }
 
-  def state: String \/ Seq[MigrationInfo] = \/-(s)
+  def state(logger: Logger): String \/ Seq[MigrationInfo] = \/-(s)
 
-  def downs(hash: Seq[Byte]): String \/ Seq[Script] = \/-(ds(hash))
+  def downs(logger: Logger)(hash: Seq[Byte]): String \/ Seq[Script] = \/-(ds(hash))
 
-  def close(): String \/ Unit = {
-    println("closing")
+  def close(logger: Logger)(): String \/ Unit = {
+    logger.info("closing")
     \/-()
   }
 }

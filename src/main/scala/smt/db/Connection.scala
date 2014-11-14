@@ -2,26 +2,27 @@ package smt.db
 
 import smt.migration.{Direction, Script, MigrationInfo}
 import scalaz.\/
+import sbt.Logger
 
 trait Connection {
 
-  def init(): String \/ Unit
+  def init(logger: Logger)(): String \/ Unit
   
-  def state: String \/ Seq[MigrationInfo]
+  def state(logger: Logger): String \/ Seq[MigrationInfo]
 
-  def downs(hash: Seq[Byte]): String \/ Seq[Script]
+  def downs(logger: Logger)(hash: Seq[Byte]): String \/ Seq[Script]
 
-  def add(migrationInfo: MigrationInfo): String \/ Unit
+  def add(logger: Logger)(migrationInfo: MigrationInfo): String \/ Unit
 
-  def addDowns(migHash: Seq[Byte], downs: Seq[Script]): String \/ Unit
+  def addDowns(logger: Logger)(migHash: Seq[Byte], downs: Seq[Script]): String \/ Unit
 
-  def remove(hash: Seq[Byte]): String \/ Unit
+  def remove(logger: Logger)(hash: Seq[Byte]): String \/ Unit
 
-  def removeDowns(migHash: Seq[Byte]): String \/ Unit
+  def removeDowns(logger: Logger)(migHash: Seq[Byte]): String \/ Unit
 
-  def applyScript(script: Script, direction: Direction): String \/ Unit
+  def applyScript(logger: Logger)(script: Script, direction: Direction): String \/ Unit
 
-  def testScript(script: Script): String \/ Unit
+  def testScript(logger: Logger)(script: Script): String \/ Unit
 
-  def close(): String \/ Unit
+  def close(logger: Logger)(): String \/ Unit
 }

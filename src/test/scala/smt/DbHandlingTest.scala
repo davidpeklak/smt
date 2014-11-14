@@ -12,11 +12,22 @@ import smt.migration.Migration
 import smt.db.ConnectionAction.HasConnection
 import smt.db.Connection
 import smt.db.AddAction.{HasUser, HasRemark}
+import sbt.{Logger, Level}
+import smt.describe.DescribeAction.HasLogger
 
 class DbHandlingTest extends FunSuite with PropTesting {
 
+  lazy val logger: Logger = new Logger {
+    def log(level: Level.Value, message: => String): Unit = {}
+
+    def success(message: => String): Unit = {}
+
+    def trace(t: => Throwable): Unit = {}
+  }
+
   lazy val addHandling = new AddHandling[Connection] {
     lazy val hasConnection: HasConnection[Connection] = identity
+    lazy val hasLogger: HasLogger[Connection] = _ => logger
     lazy val hasUser: HasUser[Connection] = _ => "fooUser"
     lazy val hasRemark: HasRemark[Connection] = _ => None
   }
@@ -49,7 +60,7 @@ class DbHandlingTest extends FunSuite with PropTesting {
     var testScriptSeq: Seq[Script] = Seq()
     var downss: Seq[(Seq[Byte], Seq[Script])] = Seq()
 
-    override def applyScript(script: Script, direction: Direction): String \/ Unit = {
+    override def applyScript(logger: Logger)(script: Script, direction: Direction): String \/ Unit = {
       if (direction == Up) upScriptSeq = upScriptSeq :+ script
       else downScriptSeq = downScriptSeq :+ script
       if (script.content.contains("bad")) -\/("BAD")
@@ -57,13 +68,13 @@ class DbHandlingTest extends FunSuite with PropTesting {
     }
 
 
-    override def testScript(script: Script): String \/ Unit = {
+    override def testScript(logger: Logger)(script: Script): String \/ Unit = {
       testScriptSeq = testScriptSeq :+ script
       if (script.content.contains("bad")) -\/("BAD")
       else \/-(())
     }
 
-    override def addDowns(migHash: Seq[Byte], downs: Seq[Script]): String \/ Unit = {
+    override def addDowns(logger: Logger)(migHash: Seq[Byte], downs: Seq[Script]): String \/ Unit = {
       downss = downss :+ (migHash, downs)
       \/-(())
     }

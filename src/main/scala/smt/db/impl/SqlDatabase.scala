@@ -10,6 +10,7 @@ import smt.db.{Connection, Database}
 import smt.migration.{Script, MigrationInfo, Direction}
 import scalaz.\/
 import scala.collection.immutable.Stream.Empty
+import sbt.Logger
 
 object SqlDatabase {
   def fromTryCatch[A](block: => A): String \/ A = {
@@ -125,7 +126,7 @@ abstract class SqlConnection(protected val cnx: JConnection) extends Connection 
 
   def doesDownTableExist(): Boolean = isResultSizeOne(queryTableExistsString(DOWN))
 
-  def init(): String \/ Unit = fromTryCatch {
+  def init(logger: Logger)(): String \/ Unit = fromTryCatch {
     if (doesMigrationTableExist()) {
       if (!doesMigrationTableHaveUserColumn()) alterMigrationTableAddUserColumn()
       if (!doesMigrationTableHaveRemarkColumn()) alterMigrationTableAddRemarkColumn()
@@ -135,7 +136,7 @@ abstract class SqlConnection(protected val cnx: JConnection) extends Connection 
     if (!doesDownTableExist()) createDownTable()
   }
 
-  def add(migrationInfo: MigrationInfo): String \/ Unit = fromTryCatch {
+  def add(logger: Logger)(migrationInfo: MigrationInfo): String \/ Unit = fromTryCatch {
     val mm = withStatement(cnx)(st => {
       mapResultSet(st.executeQuery(queryMigrationTableString))(rs => {
         rs.getLong(INDEX)
@@ -145,15 +146,15 @@ abstract class SqlConnection(protected val cnx: JConnection) extends Connection 
     })
 
     val mi = mm.getOrElse(0L) + 1L
-    println("adding migration " + mi + ", " + migrationInfo)
+    logger.info("adding migration " + mi + ", " + migrationInfo)
 
     withStatement(cnx)(_.execute(insertMigrationString(migrationInfo, mi)))
   }
 
-  def addDowns(migHash: Seq[Byte], downs: Seq[Script]): String \/ Unit = fromTryCatch {
-    println("adding " + downs.size + " downs")
+  def addDowns(logger: Logger)(migHash: Seq[Byte], downs: Seq[Script]): String \/ Unit = fromTryCatch {
+    logger.info("adding " + downs.size + " downs")
     def addDown(i: Int, down: Script) {
-      println("adding down: " + down)
+      logger.info("adding down: " + down)
       val clob = cnx.createClob()
       clob.setString(1, down.content)
       withPreparedStatement(cnx, insertDownString(down.name, migHash, i))(st => {
@@ -165,28 +166,28 @@ abstract class SqlConnection(protected val cnx: JConnection) extends Connection 
     downs.zipWithIndex.foreach(t => addDown(t._2, t._1))
   }
 
-  def remove(hash: Seq[Byte]): String \/ Unit = fromTryCatch {
-    println("removing " + bytesToHex(hash))
+  def remove(logger: Logger)(hash: Seq[Byte]): String \/ Unit = fromTryCatch {
+    logger.info("removing " + bytesToHex(hash))
     withStatement(cnx)(_.execute(removeMigrationString(hash)))
   }
 
-  def removeDowns(migHash: Seq[Byte]): String \/ Unit = fromTryCatch {
-    println("removing downs for " + bytesToHex(migHash))
+  def removeDowns(logger: Logger)(migHash: Seq[Byte]): String \/ Unit = fromTryCatch {
+    logger.info("removing downs for " + bytesToHex(migHash))
     withStatement(cnx)(_.execute(removeDownsString(migHash)))
   }
 
-  def applyScript(script: Script, direction: Direction): String \/ Unit = fromTryCatch {
-    println("applying " + direction + " script: " + script)
+  def applyScript(logger: Logger)(script: Script, direction: Direction): String \/ Unit = fromTryCatch {
+    logger.info("applying " + direction + " script: " + script)
     withStatement(cnx)(_.execute(script.content))
   }
 
 
-  def testScript(script: Script): String \/ Unit = fromTryCatch {
-    println("applying test script: " + script)
+  def testScript(logger: Logger)(script: Script): String \/ Unit = fromTryCatch {
+    logger.info("applying test script: " + script)
     withStatement(cnx)(_.execute(script.content))
   }
 
-  def state: String \/ Seq[MigrationInfo] = fromTryCatch(withStatement(cnx)(st => {
+  def state(logger: Logger): String \/ Seq[MigrationInfo] = fromTryCatch(withStatement(cnx)(st => {
     mapResultSet(st.executeQuery(queryMigrationTableString))(rs => {
       (MigrationInfo(
         name = rs.getString(NAME),
@@ -200,7 +201,7 @@ abstract class SqlConnection(protected val cnx: JConnection) extends Connection 
     }).toSeq.sortBy(_._2).map(_._1)
   }, noDataCatcher))
 
-  def downs(hash: Seq[Byte]): String \/ Seq[Script] = fromTryCatch(withStatement(cnx)(st => {
+  def downs(logger: Logger)(hash: Seq[Byte]): String \/ Seq[Script] = fromTryCatch(withStatement(cnx)(st => {
     mapResultSet(st.executeQuery(queryDownString(hash)))(rs => {
       val index = rs.getInt(INDEX)
       val name = Option(rs.getString(NAME)).getOrElse(index.toString)
@@ -210,5 +211,5 @@ abstract class SqlConnection(protected val cnx: JConnection) extends Connection 
     }).toSeq.sortBy(_._2).map(_._1)
   }, noDataCatcher))
 
-  def close(): \/[String, Unit] = fromTryCatch(cnx.close())
+  def close(logger: Logger)(): \/[String, Unit] = fromTryCatch(cnx.close())
 }

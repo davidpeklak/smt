@@ -9,41 +9,52 @@ import scalaz.{-\/, EitherT}
 import smt.migration.{MigrationInfo, Migration, Up}
 import smt.db.ConnectionAction.HasConnection
 import smt.db.AddAction.{HasUser, HasRemark}
+import smt.describe.DescribeAction.HasLogger
 
 case class HandlingDep(db: Database, rps: List[Reporter], logger: Logger, user: String, remark: Option[String])
 
+case class ConnectionDep(c: Connection, logger: Logger)
+
 trait StateHandling[T] extends DbAction[T] {
-  
-  lazy val connectionHandling = new ConnectionHandling[Connection] {
-    lazy val hasConnection: HasConnection[Connection] = identity
+
+  lazy val connectionHandling = new ConnectionHandling[ConnectionDep] {
+    lazy val hasConnection: HasConnection[ConnectionDep] = _.c
+    lazy val hasLogger: HasLogger[ConnectionDep] = _.logger
+  }
+
+  def openConnection: EDKleisli[ConnectionDep] = {
+    for {
+      c <- connection()
+      l <- eAsk.map(hasLogger)
+    } yield ConnectionDep(c, l)
   }
 
   def state(): EDKleisli[Seq[MigrationInfo]] = {
     import ekSyntax._
     import connectionHandling.eSyntax._
 
-    connection() >=> ((connectionHandling.init() >> connectionHandling.state()) andFinally connectionHandling.close())
+    openConnection >=> ((connectionHandling.init() >> connectionHandling.state()) andFinally connectionHandling.close())
   }
 
   def latestCommon(mhs: Seq[(Migration, Seq[Byte])]): EDKleisli[Option[connectionHandling.Common]] = {
     import ekSyntax._
     import connectionHandling.eSyntax._
 
-    connection() >=> ((connectionHandling.init() >> connectionHandling.latestCommon(mhs)) andFinally connectionHandling.close())
+    openConnection >=> ((connectionHandling.init() >> connectionHandling.latestCommon(mhs)) andFinally connectionHandling.close())
   }
 
   def common(mhs: Seq[(Migration, Seq[Byte])]): EDKleisli[connectionHandling.CommonMigrations] = {
     import ekSyntax._
     import connectionHandling.eSyntax._
 
-    connection() >=> ((connectionHandling.init() >> connectionHandling.common(mhs)) andFinally connectionHandling.close())
+    openConnection >=> ((connectionHandling.init() >> connectionHandling.common(mhs)) andFinally connectionHandling.close())
   }
 
   def applyScript(scr: migration.Script): EDKleisli[Unit] = {
     import ekSyntax._
     import connectionHandling.eSyntax._
 
-    connection() >=> (connectionHandling.applyScript(scr, Up) andFinally connectionHandling.close())
+    openConnection >=> (connectionHandling.applyScript(scr, Up) andFinally connectionHandling.close())
   }
 }
 
@@ -56,6 +67,7 @@ trait Handling[T] extends DbAction[T] with DescribeAction[T] with ReportersActio
 
   lazy val connectionHandling = new AddHandling[(T, Connection)] {
     lazy val hasConnection: HasConnection[(T, Connection)] = _._2
+    lazy val hasLogger: HasLogger[(T, Connection)] = t => handling.hasLogger(t._1)
     lazy val hasUser: HasUser[(T, Connection)] = t => handling.hasUser(t._1)
     lazy val hasRemark: HasRemark[(T, Connection)] = t => handling.hasRemark(t._1)
   }
@@ -68,9 +80,16 @@ trait Handling[T] extends DbAction[T] with DescribeAction[T] with ReportersActio
             import namedMoveTypes._
             import namedMoveTypes.ewSyntax._
 
-            namedMoveTypes.liftE(connection()) >=! Tuple2[T, Connection] !=> {
+            {
+              for {
+                t <- namedMoveTypes.liftE(eAsk)
+                c <- namedMoveTypes.liftE(connection())
+              } yield {
+                Tuple2(t, c)
+              }
+            } >=> {
               import connectionHandling.namedMoveTypes._
-              liftE(connectionHandling.init()) >>  connectionHandling.applyMigrations(ms, arb, runTests) >> liftE(connectionHandling.close())
+              liftE(connectionHandling.init()) >> connectionHandling.applyMigrations(ms, arb, runTests) >> liftE(connectionHandling.close())
             }
           }.run.run
         }

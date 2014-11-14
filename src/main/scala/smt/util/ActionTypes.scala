@@ -23,6 +23,10 @@ trait ActionTypes[D] {
 
   def ePoint[A](a: A): EDKleisli[A] = EDKleisli(DKleisli(_ => \/-(a)))
 
+  def ask: DKleisli[D] = Kleisli.ask[Future, D]
+
+  def eAsk: EDKleisli[D] = EDKleisli(ask.map(\/-(_)))
+
   def failure(f: String): EDKleisli[Nothing] = EDKleisli(DKleisli(_ => -\/(f)))
 
   trait WriterTypes[W] {

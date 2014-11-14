@@ -46,26 +46,6 @@ object KleisliStack {
 
         swapStackBack(this.swapStack >=> k.swapStack)
       }
-
-      trait Combining[DA] {
-        val bc: Bind[({type λ[+α] = Stacked[M, α]})#λ]
-        val ccc: (D, A) => DA
-
-        def !=>[C](k: TKleisli[M, DA, C]): TKleisli[M, D, C] = {
-          val syn = tKleisliSyntax[M, DA]
-          import syn._
-
-          val kl: Kleisli[({type λ[+α] = Stacked[M, α]})#λ, D, A] = tKlseisliOps.swapStack
-          val klc = k.swapStack
-          val kl2: Kleisli[({type λ[+α] = Stacked[M, α]})#λ, D, C] = kleisli[({type λ[+α] = Stacked[M, α]})#λ, D, C]((a: D) => bc.bind(kl.run(a))(b => klc.run(ccc(a, b))))
-          swapStackBack(kl2)
-        }
-      }
-
-      def >=![DA](cc: (D, A) => DA)(implicit b: Bind[({type λ[+α] = Stacked[M, α]})#λ]): Combining[DA] = new Combining[DA] {
-        val bc = b
-        val ccc = cc
-      }
     }
 
     trait TKleisliSyntax[M[+ _], D] {

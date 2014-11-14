@@ -22,9 +22,11 @@ object SMTImpl {
 
   private def throwLeft[T](s: TaskStreams)(te: String \/ T): T = te.fold[T]((e: String) => failException(s)(e), identity)
 
+  case class StateHandlingDep(db: Database, logger: Logger)
 
-  val stateHandling = new StateHandling[Database] {
-    lazy val hasDb: HasDb[Database] = identity
+  val stateHandling = new StateHandling[StateHandlingDep] {
+    lazy val hasDb: HasDb[StateHandlingDep] = _.db
+    lazy val hasLogger: HasLogger[StateHandlingDep] = _.logger
   }
 
   val handling = new Handling[HandlingDep] {
@@ -36,12 +38,8 @@ object SMTImpl {
   }
 
   def showDbState(db: Database, ms: Seq[Migration], s: TaskStreams): Unit = {
-    /*val result = stateHandling.state().run(db).run
 
-    result.foreach(_.foreach(st => s.log.info(st.toString)))
-    throwLeft(s)(result)*/
-
-    val result = stateHandling.common(ms zip MigrationHandling.hashMigrations(ms)).run(db).run
+    val result = stateHandling.common(ms zip MigrationHandling.hashMigrations(ms)).run(StateHandlingDep(db, s.log)).run
 
     result.foreach(co => {
       co.common.foreach(st => s.log.info(st.toString))
@@ -51,7 +49,7 @@ object SMTImpl {
   }
 
   def showLatestCommon(db: Database, ms: Seq[Migration], s: TaskStreams): Unit = {
-    val result = stateHandling.latestCommon(ms zip MigrationHandling.hashMigrations(ms)).run(db).run
+    val result = stateHandling.latestCommon(ms zip MigrationHandling.hashMigrations(ms)).run(StateHandlingDep(db, s.log)).run
 
     result.foreach(lco => s.log.info(lco.map(_.toString).getOrElse("None")))
     throwLeft(s)(result)
@@ -99,7 +97,7 @@ object SMTImpl {
         val fullPath = relPath.foldLeft[File](sourceDir)((p, s) => p / s)
         val script = OneFileOneScriptSplitter(fullPath).head
         val action = stateHandling.applyScript(script)
-        val result = action.run(db).run
+        val result = action.run(StateHandlingDep(db, s.log)).run
         throwLeft(s)(result)
       }
       case Seq() => throw new Exception("Path expected.")

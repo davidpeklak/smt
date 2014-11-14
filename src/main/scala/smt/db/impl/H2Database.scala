@@ -2,6 +2,7 @@ package smt.db.impl
 
 import java.sql.{Connection => JConnection, _}
 import scala.util.control.Exception._
+import sbt.Logger
 import SqlConnection._
 
 class H2Database(connection: => JConnection) extends SqlDatabase(
@@ -9,9 +10,9 @@ class H2Database(connection: => JConnection) extends SqlDatabase(
 )
 
 class H2Connection(connection: JConnection) extends SqlConnection(connection) {
-  def tableExistsCatcher(name: String): Catcher[Unit] = {
+  def tableExistsCatcher(logger: Logger)(name: String): Catcher[Unit] = {
     case e: SQLException if e.getErrorCode == 42101 && e.getMessage.contains(("Table \"" + name + "\" already exists")) => {
-      println("Ignoring SqlExecption " + e.getErrorCode + ", " + e.getMessage)
+      logger.info("Ignoring SqlExecption " + e.getErrorCode + ", " + e.getMessage)
     }
   }
 
