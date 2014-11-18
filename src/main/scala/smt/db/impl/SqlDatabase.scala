@@ -51,7 +51,10 @@ object SqlConnection {
   }
 }
 
-abstract class SqlConnection(protected val cnx: JConnection) extends Connection {
+abstract class SqlConnection(protected val cnx: JConnection,
+                             tableSchema: Option[String],
+                             migrationTableName: String,
+                             downTableName: String) extends Connection {
   sqlConnection =>
 
   def noDataCatcher[A]: Catcher[Seq[A]]
@@ -60,11 +63,12 @@ abstract class SqlConnection(protected val cnx: JConnection) extends Connection 
   val HASH = "HASH"
   val TIME = "TIME"
   val INDEX = "INDX"
-  val MIGRATION = "MIGRATION"
-  val DOWN = "DOWN"
   val SCRIPT = "SCRIP"
   val USER = "USR"
   val REMARK = "REMARK"
+
+  val MIGRATION = tableSchema.map(_ + ".").getOrElse("") + migrationTableName
+  val DOWN = tableSchema.map(_ + ".").getOrElse("") + downTableName
 
   val createMigrationTableString = "CREATE TABLE " + MIGRATION + "( " + INDEX + " NUMBER(10), " + NAME + " VARCHAR(128), " +
     HASH + " VARCHAR(40), " + TIME + " NUMBER(15), " + USER + " VARCHAR(100), " + REMARK + " VARCHAR(256) )"
@@ -112,7 +116,7 @@ abstract class SqlConnection(protected val cnx: JConnection) extends Connection 
 
   def queryMigrationTableHasColumnString(column: String): String
 
-  def doesMigrationTableExist(): Boolean = isResultSizeOne(queryTableExistsString(MIGRATION))
+  def doesMigrationTableExist(): Boolean = isResultSizeOne(queryTableExistsString(migrationTableName))
 
   def doesMigrationTableHaveUserColumn(): Boolean = isResultSizeOne(queryMigrationTableHasColumnString(USER))
 
@@ -124,7 +128,7 @@ abstract class SqlConnection(protected val cnx: JConnection) extends Connection 
 
   def alterMigrationTableAddRemarkColumn() = withStatement(cnx)(_.execute(alterMigrationTableAddColumnString(REMARK + " VARCHAR(256)")))
 
-  def doesDownTableExist(): Boolean = isResultSizeOne(queryTableExistsString(DOWN))
+  def doesDownTableExist(): Boolean = isResultSizeOne(queryTableExistsString(downTableName))
 
   def init(logger: Logger)(): String \/ Unit = fromTryCatch {
     if (doesMigrationTableExist()) {

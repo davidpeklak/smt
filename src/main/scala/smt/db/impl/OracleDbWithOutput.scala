@@ -6,11 +6,17 @@ import smt.migration.{Script, Direction}
 import sbt.Logger
 import scalaz.\/
 
-class OracleDatabaseWithOutput(connection: => JConnection) extends SqlDatabase(
-new OracleConnectionWithOutput(connection)
+class OracleDatabaseWithOutput(connection: => JConnection,
+                               tableSchema: Option[String] = None,
+                               migrationTableName: String = "MIGRATION",
+                               downTableName: String = "DOWN") extends SqlDatabase(
+new OracleConnectionWithOutput(connection, tableSchema, migrationTableName, downTableName)
 )
 
-class OracleConnectionWithOutput(connection: JConnection) extends OracleConnection(connection) {
+class OracleConnectionWithOutput(connection: JConnection,
+                                 tableSchema: Option[String],
+                                 migrationTableName: String,
+                                 downTableName: String) extends OracleConnection(connection, tableSchema, migrationTableName, downTableName) {
   import SqlDatabase._
   import SqlConnection._
 
