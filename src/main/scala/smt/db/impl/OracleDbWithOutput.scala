@@ -10,23 +10,26 @@ class OracleDatabaseWithOutput(connection: => JConnection,
                                tableSchema: Option[String] = None,
                                migrationTableName: String = "MIGRATION",
                                downTableName: String = "DOWN") extends SqlDatabase(
-new OracleConnectionWithOutput(connection, tableSchema, migrationTableName, downTableName)
+  new OracleConnectionWithOutput(connection, tableSchema, migrationTableName, downTableName)
 )
 
 class OracleConnectionWithOutput(connection: JConnection,
                                  tableSchema: Option[String],
                                  migrationTableName: String,
                                  downTableName: String) extends OracleConnection(connection, tableSchema, migrationTableName, downTableName) {
+
   import SqlDatabase._
   import SqlConnection._
 
   private def doApplyScript(logger: Logger)(script: Script) {
     withStatement(cnx)(_.execute("begin dbms_output.enable(1000000); end;"))
 
-    withStatement(cnx)(_.execute(script.content))
-
-    withCallableStatement(cnx,
-      """declare
+    try {
+      withStatement(cnx)(_.execute(script.content))
+    }
+    finally {
+      withCallableStatement(cnx,
+        """declare
             l_line varchar2(255);
            l_done number;
             l_buffer long;
@@ -39,19 +42,19 @@ class OracleConnectionWithOutput(connection: JConnection,
          :done := l_done;
          :buffer := l_buffer;
         end;"""
-    ) ( stm => {
-      stm.registerOutParameter( 2, java.sql.Types.INTEGER )
-      stm.registerOutParameter( 3, java.sql.Types.VARCHAR )
+      )(stm => {
+        stm.registerOutParameter(2, java.sql.Types.INTEGER)
+        stm.registerOutParameter(3, java.sql.Types.VARCHAR)
 
-      do
-      {
-        stm.setInt( 1, 32000 )
-        stm.executeUpdate()
-        logger.info( stm.getString(3) )
-      } while (stm.getInt(2) != 1)
-    })
+        do {
+          stm.setInt(1, 32000)
+          stm.executeUpdate()
+          logger.info(stm.getString(3))
+        } while (stm.getInt(2) != 1)
+      })
 
-    withStatement(cnx)(_.execute("begin dbms_output.disable; end;"))
+      withStatement(cnx)(_.execute("begin dbms_output.disable; end;"))
+    }
   }
 
   override def applyScript(logger: Logger)(script: Script, direction: Direction): String \/ Unit = fromTryCatch {
