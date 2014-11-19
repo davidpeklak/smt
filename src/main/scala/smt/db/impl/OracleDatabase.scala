@@ -31,6 +31,6 @@ class OracleConnection(connection: JConnection,
 
   def queryMigrationTableHasColumnString(column: String): String = tableSchema match {
     case None => "select CNAME from SYS.COL where TNAME = '" + migrationTableName + "' and CNAME = '" + column + "'"
-    case Some(schema) => "select COLUMN_NAME from DBA_TAB_COLS where TABLE_NAME = '" + migrationTableName + "' and OWNER = '" + schema + "'"
+    case Some(schema) => "select COLUMN_NAME from DBA_TAB_COLS where TABLE_NAME = '" + migrationTableName + "' and OWNER = '" + schema + "' and COLUMN_NAME = '" + column + "'"
   }
 }
