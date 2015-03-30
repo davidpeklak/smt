@@ -37,9 +37,9 @@ object SMTImpl {
     lazy val hasRemark: HasRemark[HandlingDep] =  _.remark
   }
 
-  def showDbState(db: Database, ms: Seq[Migration], s: TaskStreams): Unit = {
+  def showDbState(db: Database, ms: Seq[Migration], imo: Option[(Int, String)], s: TaskStreams): Unit = {
 
-    val result = stateHandling.common(ms zip MigrationHandling.hashMigrations(ms)).run(StateHandlingDep(db, s.log)).run
+    val result = stateHandling.common(MigrationHandling.hashMigrations(ms, imo)).run(StateHandlingDep(db, s.log)).run
 
     result.foreach(co => {
       co.common.foreach(st => s.log.info(st.toString))
@@ -48,28 +48,28 @@ object SMTImpl {
     throwLeft(s)(result)
   }
 
-  def showLatestCommon(db: Database, ms: Seq[Migration], s: TaskStreams): Unit = {
-    val result = stateHandling.latestCommon(ms zip MigrationHandling.hashMigrations(ms)).run(StateHandlingDep(db, s.log)).run
+  def showLatestCommon(db: Database, ms: Seq[Migration], imo: Option[(Int, String)], s: TaskStreams): Unit = {
+    val result = stateHandling.latestCommon(MigrationHandling.hashMigrations(ms, imo)).run(StateHandlingDep(db, s.log)).run
 
     result.foreach(lco => s.log.info(lco.map(_.toString).getOrElse("None")))
     throwLeft(s)(result)
   }
 
-  def applyMigrations(args: Seq[String], db: Database, ms: Seq[Migration], arb: Boolean, runTests: Boolean, rs: Seq[Reporter], user: String, s: TaskStreams): Unit = {
+  def applyMigrations(args: Seq[String], db: Database, ms: Seq[Migration], imo: Option[(Int, String)], arb: Boolean, runTests: Boolean, rs: Seq[Reporter], user: String, s: TaskStreams): Unit = {
     args match {
-      case Seq(remark) => doApplyMigrations(db, ms, arb, runTests, rs, user, Some(remark), s)
-      case Seq() => doApplyMigrations(db, ms, arb, runTests, rs, user, None, s)
+      case Seq(remark) => doApplyMigrations(db, ms, imo, arb, runTests, rs, user, Some(remark), s)
+      case Seq() => doApplyMigrations(db, ms, imo, arb, runTests, rs, user, None, s)
       case _ => throw new Exception("Too many arguments. Optional remark expected.")
     }
   }
 
-  def doApplyMigrations(db: Database, ms: Seq[Migration], arb: Boolean, runTests: Boolean, rs: Seq[Reporter], user: String, remark: Option[String], s: TaskStreams): Unit = {
-    val action = handling.applyMigrationsAndReport(ms, arb, runTests)
+  def doApplyMigrations(db: Database, ms: Seq[Migration], imo: Option[(Int, String)], arb: Boolean, runTests: Boolean, rs: Seq[Reporter], user: String, remark: Option[String], s: TaskStreams): Unit = {
+    val action = handling.applyMigrationsAndReport(ms, imo, arb, runTests)
     val dep = HandlingDep(db, rs.toList, s.log, user, remark)
     throwLeft(s)(action.run(dep).run)
   }
 
-  def migrateTo(args: Seq[String], db: Database, ms: Seq[Migration], arb: Boolean, runTests: Boolean, rs: Seq[Reporter], user: String, s: TaskStreams) {
+  def migrateTo(args: Seq[String], db: Database, ms: Seq[Migration], imo: Option[(Int, String)], arb: Boolean, runTests: Boolean, rs: Seq[Reporter], user: String, s: TaskStreams) {
     def checkMig(target: String): Seq[Migration] = {
       val mst = ms.reverse.dropWhile(_.name != target).reverse
       if (mst.isEmpty) throw new Exception("No migration named '" + target + "' defined")
@@ -79,11 +79,11 @@ object SMTImpl {
     args match {
       case Seq(target) => {
         val mst = checkMig(target)
-        doApplyMigrations(db, mst, arb, runTests, rs, user, None, s)
+        doApplyMigrations(db, mst, imo, arb, runTests, rs, user, None, s)
       }
       case Seq(target, remark) => {
         val mst = checkMig(target)
-        doApplyMigrations(db, mst, arb, runTests, rs, user, Some(remark), s)
+        doApplyMigrations(db, mst, imo, arb, runTests, rs, user, Some(remark), s)
       }
       case Seq() => throw new Exception("Name of a migration expected.")
       case _ => throw new Exception("Too many arguments. Name of a migration and optional remark expected.")

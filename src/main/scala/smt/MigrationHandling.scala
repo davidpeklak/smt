@@ -4,7 +4,7 @@ import sbt.Keys._
 import java.security.MessageDigest
 import smt.util.Util
 import Util._
-import smt.migration.{Script, Migration, Group}
+import smt.migration.{HashedMigrationSeq, Script, Migration, Group}
 
 object MigrationHandling {
   type Transformation = String => String
@@ -21,8 +21,8 @@ object MigrationHandling {
     ms.map(m => m.copy(groups =  m.groups.map(transformGroup(downTs, upTs))))
   }
 
-  def showHashesImpl(ms: Seq[Migration], s: TaskStreams): Unit = {
-    (ms.map(_.name) zip hashMigrations(ms).map(bytesToHex)).foreach(t => s.log.info(t._1 + ": " + t._2))
+  def showHashesImpl(ms: Seq[Migration], imo: Option[(Int, String)], s: TaskStreams): Unit = {
+    (ms.map(_.name) zip hashMigrations(ms, imo).migs.map(_._2).map(bytesToHex)).foreach(t => s.log.info(t._1 + ": " + t._2))
   }
 
   private lazy val md = MessageDigest.getInstance("SHA")
@@ -33,7 +33,14 @@ object MigrationHandling {
     hashBytes(preOpt.getOrElse(Seq()) ++ m.groups.flatMap(_.ups).map(_.content).foldRight(Seq[Byte]())(stringToBytes(_) ++ _))
   }
 
-  def hashMigrations(ms: Seq[Migration]): Seq[Seq[Byte]] = ms.foldLeft[Seq[Seq[Byte]]](Nil)((s, m) => s :+ hashMigration(m, s.lastOption))
+  def hashMigrations(ms: Seq[Migration], imo: Option[(Int, String)]): HashedMigrationSeq = {
+    val hashes = ms.foldLeft[Seq[Seq[Byte]]](Nil)((s, m) => s :+ hashMigration(m, s.lastOption.orElse(imo.map(im => hexToBytes(im._2)))))
+
+    HashedMigrationSeq(
+      imo.map(_._1).getOrElse(0),
+      ms zip hashes
+    )
+  }
 
   def failHash(failure: String): Seq[Byte] = hashBytes(stringToBytes(failure))
 

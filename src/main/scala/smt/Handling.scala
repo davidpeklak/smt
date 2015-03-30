@@ -6,7 +6,7 @@ import scalaz.Scalaz._
 import smt.describe.DescribeAction
 import sbt.Logger
 import scalaz.{-\/, EitherT}
-import smt.migration.{MigrationInfo, Migration, Up}
+import smt.migration.{HashedMigrationSeq, MigrationInfo, Migration, Up}
 import smt.db.ConnectionAction.HasConnection
 import smt.db.AddAction.{HasUser, HasRemark}
 import smt.describe.DescribeAction.HasLogger
@@ -36,14 +36,14 @@ trait StateHandling[T] extends DbAction[T] {
     openConnection >=> ((connectionHandling.init() >> connectionHandling.state()) andFinally connectionHandling.close())
   }
 
-  def latestCommon(mhs: Seq[(Migration, Seq[Byte])]): EDKleisli[Option[connectionHandling.Common]] = {
+  def latestCommon(mhs: HashedMigrationSeq): EDKleisli[Option[connectionHandling.Common]] = {
     import ekSyntax._
     import connectionHandling.eSyntax._
 
     openConnection >=> ((connectionHandling.init() >> connectionHandling.latestCommon(mhs)) andFinally connectionHandling.close())
   }
 
-  def common(mhs: Seq[(Migration, Seq[Byte])]): EDKleisli[connectionHandling.CommonMigrations] = {
+  def common(mhs: HashedMigrationSeq): EDKleisli[connectionHandling.CommonMigrations] = {
     import ekSyntax._
     import connectionHandling.eSyntax._
 
@@ -72,7 +72,7 @@ trait Handling[T] extends DbAction[T] with DescribeAction[T] with ReportersActio
     lazy val hasRemark: HasRemark[(T, Connection)] = t => handling.hasRemark(t._1)
   }
 
-  def applyMigrationsAndReport(ms: Seq[Migration], arb: Boolean, runTests: Boolean): EDKleisli[Unit] = {
+  def applyMigrationsAndReport(ms: Seq[Migration], imo: Option[(Int, String)], arb: Boolean, runTests: Boolean): EDKleisli[Unit] = {
     EitherT[DKleisli, String, Unit](
       for {
         nmse <- {
@@ -89,7 +89,7 @@ trait Handling[T] extends DbAction[T] with DescribeAction[T] with ReportersActio
               }
             } >=> {
               import connectionHandling.namedMoveTypes._
-              liftE(connectionHandling.init()) >> connectionHandling.applyMigrations(ms, arb, runTests) >> liftE(connectionHandling.close())
+              liftE(connectionHandling.init()) >> connectionHandling.applyMigrations(ms, imo, arb, runTests) >> liftE(connectionHandling.close())
             }
           }.run.run
         }

@@ -15,17 +15,17 @@ object SMT extends Plugin {
     migrationsSource <<= (sourceDirectory in Compile) / "migrations",
     scriptSource <<= baseDirectory,
     allowRollback := false,
-    runTests := true
+    runTests := true,
+    initMigration := None
   )
 
   lazy val smtSettings = Seq(
     transformedMigrations <<= (migrations, transformations, transformations) map transformedMigrationsImpl,
-    showHashes <<= (transformedMigrations, streams) map showHashesImpl,
-    showDbState <<= (database, transformedMigrations, streams) map SMTImpl.showDbState,
-    // applyMigrations <<= (database, transformedMigrations, allowRollback, runTests, reporters, user, streams) map SMTImpl.applyMigrations,
-    applyMigrations <<= inputTask((argTask: TaskKey[Seq[String]]) => (argTask, database, transformedMigrations, allowRollback, runTests, reporters, user, streams) map SMTImpl.applyMigrations),
-    migrateTo <<= inputTask((argTask: TaskKey[Seq[String]]) => (argTask, database, transformedMigrations, allowRollback, runTests, reporters, user, streams) map SMTImpl.migrateTo),
-    showLatestCommon <<= (database, transformedMigrations, streams) map SMTImpl.showLatestCommon,
+    showHashes <<= (transformedMigrations, initMigration, streams) map showHashesImpl,
+    showDbState <<= (database, transformedMigrations, initMigration, streams) map SMTImpl.showDbState,
+    applyMigrations <<= inputTask((argTask: TaskKey[Seq[String]]) => (argTask, database, transformedMigrations, initMigration, allowRollback, runTests, reporters, user, streams) map SMTImpl.applyMigrations),
+    migrateTo <<= inputTask((argTask: TaskKey[Seq[String]]) => (argTask, database, transformedMigrations, initMigration, allowRollback, runTests, reporters, user, streams) map SMTImpl.migrateTo),
+    showLatestCommon <<= (database, transformedMigrations, initMigration, streams) map SMTImpl.showLatestCommon,
     runScript <<= inputTask((argTask: TaskKey[Seq[String]]) => (argTask, scriptSource, database, streams) map SMTImpl.runScript),
     reporters := Seq[Reporter](),
     user := System.getProperty("user.name")
@@ -34,6 +34,8 @@ object SMT extends Plugin {
   val migrationsSource = SettingKey[File]("migrations-source", "base-directory for migration files")
 
   val scriptSource = SettingKey[File]("script-source", "base directory for migration-independent db-scripts")
+
+  val initMigration = SettingKey[Option[(Int, String)]]("init-migration", "an optional ititial migration to base the migrations in the repository on")
 
   val migrations = TaskKey[Seq[Migration]]("migrations", "sequence of migrations")
 

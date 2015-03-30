@@ -28,7 +28,7 @@ trait ConnectionHandling[T] extends ConnectionAction[T] {
     }
   }
 
-  def latestCommon2(mis: Seq[MigrationInfo], ms: Seq[(Migration, Seq[Byte])]): Option[Common] = {
+  def latestCommon2(mis: Seq[MigrationInfo], ms: HashedMigrationSeq): Option[Common] = {
     common2(mis, ms).common.lastOption
   }
 
@@ -38,8 +38,10 @@ trait ConnectionHandling[T] extends ConnectionAction[T] {
                                diffOnRepo: Seq[(Migration, Seq[Byte])]
                                )
 
-  def common2(mis: Seq[MigrationInfo], ms: Seq[(Migration, Seq[Byte])]): CommonMigrations = {
-    val (common, different) = (mis zip ms).span {
+  def common2(mis: Seq[MigrationInfo], ms: HashedMigrationSeq): CommonMigrations = {
+    val misInit = mis.drop(ms.initMig)
+
+    val (common, different) = (misInit zip ms.migs).span {
       case (MigrationInfo(_, hi, _, _, _), (_, h)) => hi == h
     }
 
@@ -52,11 +54,11 @@ trait ConnectionHandling[T] extends ConnectionAction[T] {
     )
   }
 
-  def latestCommon(mhs: Seq[(Migration, Seq[Byte])]): EDKleisli[Option[Common]] = {
+  def latestCommon(mhs: HashedMigrationSeq): EDKleisli[Option[Common]] = {
     state().map(latestCommon2(_, mhs))
   }
 
-  def common(mhs: Seq[(Migration, Seq[Byte])]): EDKleisli[CommonMigrations] = {
+  def common(mhs: HashedMigrationSeq): EDKleisli[CommonMigrations] = {
     state().map(common2(_, mhs))
   }
 
@@ -75,8 +77,8 @@ trait ConnectionHandling[T] extends ConnectionAction[T] {
     m.tests.toList.traverse__(doTest)
   }
 
-  def migrationsToApply(mhs: Seq[(Migration, Seq[Byte])], latestCommon: Option[Seq[Byte]]): Seq[(Migration, Seq[Byte])] = {
-    mhs.reverse.takeWhile(mh => !latestCommon.exists(_ == mh._2)).reverse
+  def migrationsToApply(mhs: HashedMigrationSeq, latestCommon: Option[Seq[Byte]]): HashedMigrationSeq = {
+    mhs.copy(migs = mhs.migs.reverse.takeWhile(mh => !latestCommon.exists(_ == mh._2)).reverse)
   }
 
   def applyGroup(group: Group): upMoveTypes.EWDKleisli[Unit] = {
@@ -129,10 +131,10 @@ trait AddHandling[T] extends AddAction[T] with ConnectionHandling[T] {
 
   }
 
-  def applyMigrations(ms: Seq[Migration], arb: Boolean, runTests: Boolean): namedMoveTypes.EWDKleisli[Unit] = {
+  def applyMigrations(ms: Seq[Migration], imo: Option[(Int, String)], arb: Boolean, runTests: Boolean): namedMoveTypes.EWDKleisli[Unit] = {
     import namedMoveTypes._
 
-    val mhs = ms zip hashMigrations(ms)
+    val mhs = hashMigrations(ms, imo)
 
     for {
       lcho <- liftE(latestCommon(mhs).map(_.map(_.db.hash)))
@@ -141,11 +143,11 @@ trait AddHandling[T] extends AddAction[T] with ConnectionHandling[T] {
     } yield ()
   }
 
-  def applyMigrations(mhs: Seq[(Migration, Seq[Byte])], latestCommon: Option[Seq[Byte]], runTests: Boolean): namedMoveTypes.EWDKleisli[Unit] = {
+  def applyMigrations(mhs: HashedMigrationSeq, latestCommon: Option[Seq[Byte]], runTests: Boolean): namedMoveTypes.EWDKleisli[Unit] = {
     import namedMoveTypes._
     import upMoveTypes.EWSyntax._
 
-    migrationsToApply(mhs, latestCommon).toList.traverse__ {
+    migrationsToApply(mhs, latestCommon).migs.toList.traverse__ {
       case (m, h) =>
         if (runTests) for {
           _ <- applyMigration(m, h).mapWritten(namedMoveState(m.name))
