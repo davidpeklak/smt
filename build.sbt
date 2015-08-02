@@ -1,22 +1,24 @@
-sbtPlugin := true
+import bintray.Keys._
 
-organization := "com.github.davidpeklak"
+lazy val commonSettings = Seq(
+  version in ThisBuild := "0.4.4",
+  organization in ThisBuild := "com.github.davidpeklak"
+)
 
-name := "smt"
+lazy val root = (project in file(".")).
+  settings(commonSettings ++ bintrayPublishSettings: _*).
+  settings(
+    sbtPlugin := true,
+    name := "smt",
+    description := "scala database migration tool",
+    // This is an example.  bintray-sbt requires licenses to be specified
+    // (using a canonical name).
+    licenses += ("MIT", url("http://opensource.org/licenses/MIT")),
+    publishMavenStyle := false,
+    repository in bintray := "sbt-plugins",
+    bintrayOrganization in bintray := None
+  )
 
-version := "0.4.4-SNAPSHOT"
-
-publishMavenStyle := false
-
-publishTo <<= (version) { version: String =>
-   val scalasbt = "http://repo.scala-sbt.org/scalasbt/"
-   val (name, url) =
-     if (version.contains("-SNAPSHOT")) ("sbt-plugin-snapshots", scalasbt+"sbt-plugin-snapshots")
-     else ("sbt-plugin-releases-foo", scalasbt+"sbt-plugin-releases")
-   Some(Resolver.url(name, new URL(url))(Resolver.ivyStylePatterns))
-}
-
-resolvers += "Scalaz Bintray Repo" at "http://dl.bintray.com/scalaz/releases"
 
 libraryDependencies ++= Seq(
   "com.h2database" % "h2" % "1.3.172",
