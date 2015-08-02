@@ -36,7 +36,7 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val mig = migGen.apply(Gen.Params()).get // bochn
 
-    val action = addHandling.applyMigrations(ms = Seq(mig), arb = false, runTests = true)
+    val action = addHandling.applyMigrations(ms = Seq(mig), imo = None, arb = false, runTests = true)
 
     action.run.run(new ConnectionMock).run
   }
@@ -45,7 +45,7 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val mig = migGen.apply(Gen.Params()).get // bochn
 
-    val action = addHandling.applyMigrations(ms = Seq.fill(10000)(mig), arb = false, runTests = true)
+    val action = addHandling.applyMigrations(ms = Seq.fill(10000)(mig), imo = None, arb = false, runTests = true)
 
     val conn = new ConnectionMock
 
@@ -88,7 +88,7 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val mig = migGen.map(_.copy(tests = Seq(test))).apply(Gen.Params()).get // bochn
 
-    val action = addHandling.applyMigrations(ms = Seq(mig), arb = false, runTests = true)
+    val action = addHandling.applyMigrations(ms = Seq(mig), imo = None, arb = false, runTests = true)
 
     val conn= new ScriptRecordingConnectionMock
 
@@ -105,7 +105,7 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val mig = migGen.map(_.copy(tests = Seq(test))).apply(Gen.Params()).get // bochn
 
-    val action = addHandling.applyMigrations(ms = Seq(mig), arb = false, runTests = false)
+    val action = addHandling.applyMigrations(ms = Seq(mig), imo = None, arb = false, runTests = false)
 
     val conn = new ScriptRecordingConnectionMock
 
