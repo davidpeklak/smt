@@ -7,6 +7,8 @@ import sbt.Logger
 trait Connection {
 
   def init(logger: Logger)(): String \/ Unit
+
+  def acquireLock(logger: Logger)(): String \/ String
   
   def state(logger: Logger): String \/ Seq[MigrationInfo]
 
@@ -23,6 +25,8 @@ trait Connection {
   def applyScript(logger: Logger)(script: Script, direction: Direction): String \/ Unit
 
   def testScript(logger: Logger)(script: Script): String \/ Unit
+
+  def releaseLock(logger: Logger)(lock: String): String \/ Unit
 
   def close(logger: Logger)(): String \/ Unit
 }

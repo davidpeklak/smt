@@ -51,6 +51,8 @@ trait ActionTypes[D] {
 
     lazy val ewSyntax = KleisliStack.EitherTWriterTKleisli[String, W].tKleisliSyntax[Future, D]
 
+    lazy val ewSyntax2 = EitherTHaerte.eitherTSyntax[WDKleisli, String]
+
     // the implicits are lazy, otherwise I get NullPointerExceptions
     implicit lazy val wInstance = WriterT.writerTMonad[DKleisli, W]
 

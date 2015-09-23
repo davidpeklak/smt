@@ -8,7 +8,7 @@ import Util._
 import collection.Map.empty
 import smt.db.{Connection, Database}
 import smt.migration.{Script, MigrationInfo, Direction}
-import scalaz.\/
+import scalaz.{\/-, \/}
 import scala.collection.immutable.Stream.Empty
 import sbt.Logger
 
@@ -138,6 +138,16 @@ abstract class SqlConnection(protected val cnx: JConnection,
     else createMigrationTable()
 
     if (!doesDownTableExist()) createDownTable()
+  }
+
+  def acquireLock(logger: Logger)(): \/[String, String] = {
+    logger.info("Acquiring lock")
+    \/-("")
+  }
+
+  def releaseLock(logger: Logger)(lock: String): \/[String, Unit] = {
+    logger.info("Releasing lock")
+    \/-()
   }
 
   def add(logger: Logger)(migrationInfo: MigrationInfo): String \/ Unit = fromTryCatch {

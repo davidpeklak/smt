@@ -24,6 +24,10 @@ class TestConnection extends Connection {
     \/-()
   }
 
+  def acquireLock(logger: Logger)(): \/[String, String] = \/-("")
+
+  def releaseLock(logger: Logger)(lock: String): \/[String, Unit] = \/-()
+
   def add(logger: Logger)(migrationInfo: MigrationInfo): String \/ Unit = {
     logger.info("adding " + migrationInfo)
     s = s :+ migrationInfo

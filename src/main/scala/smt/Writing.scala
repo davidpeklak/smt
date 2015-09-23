@@ -8,6 +8,8 @@ sealed trait Writing
 
 sealed trait MoveState extends Writing
 
+case class Lock(name: String) extends Writing
+
 case class UpMoveState(
                         appliedUps: List[Script] = Nil,
                         appliedUpsWithDowns: List[Script] = Nil,

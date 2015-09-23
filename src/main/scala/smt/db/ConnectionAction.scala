@@ -16,6 +16,8 @@ trait ConnectionAction[T] extends ActionTypes[T] {
 
   def init(): EDKleisli[Unit] = EDKleisli(d => hasConnection(d).init(hasLogger(d)))
 
+  def acquireLock(): EDKleisli[String] = EDKleisli(d => hasConnection(d).acquireLock(hasLogger(d)))
+
   def state(): EDKleisli[Seq[MigrationInfo]] = EDKleisli(d => hasConnection(d).state(hasLogger(d)))
 
   def downs(hash: Seq[Byte]): EDKleisli[Seq[Script]] = EDKleisli(d => hasConnection(d).downs(hasLogger(d))(hash))
@@ -31,6 +33,8 @@ trait ConnectionAction[T] extends ActionTypes[T] {
   def applyScript(script: Script, direction: Direction): EDKleisli[Unit] = EDKleisli(d => hasConnection(d).applyScript(hasLogger(d))(script, direction))
 
   def doTest(test: Test): EDKleisli[Unit] = EDKleisli(d => test.run(hasConnection(d))(hasLogger(d)))
+
+  def releaseLock(lock: String): EDKleisli[Unit] = EDKleisli(d => hasConnection(d).releaseLock(hasLogger(d))(lock))
 
   def close(): EDKleisli[Unit] = EDKleisli(d => hasConnection(d).close(hasLogger(d))())
 }
