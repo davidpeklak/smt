@@ -5,166 +5,101 @@ import smt.report.{ReportersAction, Reporter}
 import scalaz.Scalaz._
 import smt.describe.DescribeAction
 import sbt.Logger
-import scalaz.{-\/, EitherT}
+import scalaz.{\/, -\/}
 import smt.migration.{HashedMigrationSeq, MigrationInfo, Migration, Up}
-import smt.db.ConnectionAction.HasConnection
-import smt.db.LockAction.HasLock
-import smt.db.AddAction.{HasUser, HasRemark}
-import smt.describe.DescribeAction.HasLogger
+import smt.util.EitherHaerte.EitherSyntax._
 
-case class HandlingDep(db: Database, rps: List[Reporter], logger: Logger, user: String, remark: Option[String])
+/**
+  * uses functions of ConnectionHandling,
+  * wraps around connection opening, locking and closing
+  */
+object StateHandling {
 
-case class ConnectionDep(c: Connection, logger: Logger)
-
-trait StateHandling[T] extends DbAction[T] {
-
-  lazy val connectionHandling = new ConnectionHandling[ConnectionDep] {
-    lazy val hasConnection: HasConnection[ConnectionDep] = _.c
-    lazy val hasLogger: HasLogger[ConnectionDep] = _.logger
-  }
-
-  lazy val connectionLockHandling = new ConnectionHandling[(ConnectionDep, String)] {
-    lazy val hasConnection: HasConnection[(ConnectionDep, String)] = _._1.c
-    lazy val hasLogger: HasLogger[(ConnectionDep, String)] = _._1.logger
-    lazy val hasLock: HasLock[(ConnectionDep, String)] = _._2
-  }
-
-  def openConnection: EDKleisli[ConnectionDep] = {
+  def withConnection[U](action: (Connection, Logger) => String \/ U)(db: Database, logger: Logger): String \/ U = {
     for {
-      c <- connection()
-      l <- eAsk.map(hasLogger)
-    } yield ConnectionDep(c, l)
+      c <- db.connection()
+      r <- {
+        c.init(logger) >>
+          action(c, logger)
+      }.andFinally(c.close(logger))
+    } yield r
   }
 
-  def withConnection[U](action: connectionHandling.EDKleisli[U]): EDKleisli[U] = {
-    import ekSyntax._
-    import connectionHandling.eSyntax._
-
-    openConnection >=> ((connectionHandling.init() >> action) andFinally connectionHandling.close())
-  }
-
-  def acqLock: connectionHandling.EDKleisli[(ConnectionDep, String)] = {
+  def withLock[U](action: (Connection, Logger) => String \/ U)(c: Connection, logger: Logger): String \/ U = {
     for {
-      t <- connectionHandling.eAsk
-      l <- connectionHandling.acquireLock()
-    } yield (t, l)
+      lock <- c.acquireLock(logger)
+      r <- {
+        action(c, logger)
+      }.andFinally(c.releaseLock(logger)(lock))
+    } yield r
   }
 
-  def rlsLock: connectionLockHandling.EDKleisli[Unit] = {
-    for {
-      t <- connectionLockHandling.eAsk
-      _ <- connectionLockHandling.releaseLock(t._2)
-    } yield ()
+  def withLockedConnection[U](action: (Connection, Logger) => String \/ U)(db: Database, logger: Logger): String \/ U = {
+    withConnection((c, l) => {
+      withLock(action)(c, l)
+    })(db, logger)
   }
 
-  def withLock[U](action: connectionLockHandling.EDKleisli[U]): connectionHandling.EDKleisli[U] = {
-    import connectionHandling._
-    import connectionHandling.ekSyntax._
-
-    acqLock >=> {
-      import connectionLockHandling._
-      import connectionLockHandling.eSyntax._
-      action andFinally rlsLock
-    }
+  def state(db: Database, logger: Logger): String \/ Seq[MigrationInfo] = {
+    withConnection((c, l) => c.state(l))(db, logger)
   }
 
-  def state(): EDKleisli[Seq[MigrationInfo]] = withConnection(connectionHandling.state())
+  def latestCommon(mhs: HashedMigrationSeq)(db: Database, logger: Logger): String \/ Option[ConnectionHandling.Common] = {
+    withConnection((c, l) => ConnectionHandling.latestCommon(mhs)(c, l))(db, logger)
+  }
 
-  def latestCommon(mhs: HashedMigrationSeq): EDKleisli[Option[connectionHandling.Common]] = withConnection(connectionHandling.latestCommon(mhs))
+  def common(mhs: HashedMigrationSeq)(db: Database, logger: Logger): String \/ ConnectionHandling.CommonMigrations = {
+    withConnection((c, l) => ConnectionHandling.common(mhs)(c, l))(db, logger)
+  }
 
-  def common(mhs: HashedMigrationSeq): EDKleisli[connectionHandling.CommonMigrations] = withConnection(connectionHandling.common(mhs))
-
-  def applyScript(scr: migration.Script): EDKleisli[Unit] = {
-    import ekSyntax._
-    import connectionHandling.eSyntax._
-
-    openConnection >=> (withLock(connectionLockHandling.applyScript(scr, Up)) andFinally connectionHandling.close())
+  def applyScript(scr: migration.Script)(db: Database, logger: Logger): String \/ Unit = {
+    withLockedConnection((c, l) => c.applyScript(l)(scr, Up))(db, logger)
   }
 }
 
-trait Handling[T] extends DbAction[T] with DescribeAction[T] with ReportersAction[T] {
+/**
+  * uses functions of AddHandling,
+  * wraps around connection opening, locking and closing
+  */
+object Handling {
 
-  handling =>
-
-  val hasUser: HasUser[T]
-  val hasRemark: HasRemark[T]
-
-  lazy val connectionHandling = new AddHandling[(T, Connection)] {
-    lazy val hasConnection: HasConnection[(T, Connection)] = _._2
-    lazy val hasLogger: HasLogger[(T, Connection)] = t => handling.hasLogger(t._1)
-    lazy val hasUser: HasUser[(T, Connection)] = t => handling.hasUser(t._1)
-    lazy val hasRemark: HasRemark[(T, Connection)] = t => handling.hasRemark(t._1)
+  def withConnection[U](action: (Connection, Logger, NamedMoveStatesHolder) => String \/ U)(db: Database, logger: Logger, nms: NamedMoveStatesHolder): String \/ U = {
+    for {
+      c <- db.connection()
+      r <- {
+        c.init(logger) >>
+          action(c, logger, nms)
+      }.andFinally(c.close(logger))
+    } yield r
   }
 
-  lazy val connectionLockHandling = new AddHandling[(T, Connection, String)] {
-    lazy val hasConnection: HasConnection[(T, Connection, String)] = _._2
-    lazy val hasLogger: HasLogger[(T, Connection, String)] = t => handling.hasLogger(t._1)
-    lazy val hasUser: HasUser[(T, Connection, String)] = t => handling.hasUser(t._1)
-    lazy val hasRemark: HasRemark[(T, Connection, String)] = t => handling.hasRemark(t._1)
-    lazy val hasLock: HasLock[(T, Connection, String)] = _._3
+  def withLock[U](action: (Connection, Logger, NamedMoveStatesHolder) => String \/ U)(c: Connection, logger: Logger, nms: NamedMoveStatesHolder): String \/ U = {
+    for {
+      lock <- c.acquireLock(logger)
+      r <- {
+        action(c, logger, nms)
+      }.andFinally(c.releaseLock(logger)(lock))
+    } yield r
   }
 
-  def applyMigrationsAndReport(ms: Seq[Migration], imo: Option[(Int, String)], arb: Boolean, runTests: Boolean): EDKleisli[Unit] = {
+  def withLockedConnection[U](action: (Connection, Logger, NamedMoveStatesHolder) => String \/ U)(db: Database, logger: Logger, nms: NamedMoveStatesHolder): String \/ U = {
+    withConnection((c, l, s) => {
+      withLock(action)(c, l, s)
+    })(db, logger, nms)
+  }
 
-    def openConnection: EDKleisli[(T, Connection)] = {
-      for {
-        t <- eAsk
-        c <- connection()
-      } yield Tuple2(t, c)
+  def applyMigrationsAndReport(ms: Seq[Migration], imo: Option[(Int, String)], arb: Boolean, runTests: Boolean, user: String, remark: String)(db: Database, logger: Logger, reporters: List[Reporter], nms: NamedMoveStatesHolder): String \/ Unit = {
+
+    val e = withLockedConnection((c, l, s) => AddHandling.applyMigrations(ms, imo, arb, runTests, user, remark)(c, l, s))(db, logger, nms)
+
+    (nms.nms.actions.lastOption, e) match {
+      case (Some(ms), -\/(f)) => DescribeAction.describe(ms._1, ms._2, f)(logger)
+      case (None, -\/(f)) => DescribeAction.describe(f)(logger)
+      case _ => ()
     }
 
-    def withConnection[U](action: connectionHandling.namedMoveTypes.EWDKleisli[U]): namedMoveTypes.EWDKleisli[U] = {
-      import namedMoveTypes._
-      import namedMoveTypes.ewSyntax._
+    ReportersAction.reportToAll(nms.nms)(reporters)
 
-      namedMoveTypes.liftE(openConnection) >=> {
-        import connectionHandling.namedMoveTypes._
-        import connectionHandling.namedMoveTypes.ewSyntax2._
-        (liftE(connectionHandling.init()) >> action) andFinally liftE(connectionHandling.close())
-      }
-    }
-
-    def acqLock: connectionHandling.EDKleisli[(T, Connection, String)] = {
-      for {
-        t <- connectionHandling.eAsk
-        l <- connectionHandling.acquireLock()
-      } yield (t._1, t._2, l)
-    }
-
-    def rlsLock: connectionLockHandling.EDKleisli[Unit] = {
-      for {
-        t <- connectionLockHandling.eAsk
-        _ <- connectionLockHandling.releaseLock(t._3)
-      } yield ()
-    }
-
-    def withLock[U](action: connectionLockHandling.namedMoveTypes.EWDKleisli[U]): connectionHandling.namedMoveTypes.EWDKleisli[U] = {
-      import connectionHandling.namedMoveTypes._
-      import connectionHandling.namedMoveTypes.ewSyntax._
-
-      connectionHandling.namedMoveTypes.liftE(acqLock) >=> {
-        import connectionLockHandling.namedMoveTypes._
-        import connectionLockHandling.namedMoveTypes.ewSyntax2._
-        action andFinally liftE(rlsLock)
-      }
-    }
-
-    EitherT[DKleisli, String, Unit](
-      for {
-        nmse <- withConnection(withLock(connectionLockHandling.applyMigrations(ms, imo, arb, runTests))).run.run
-
-        (nms, e) = nmse
-
-        _ <- {
-          (nms.actions.lastOption, e) match {
-            case (Some(ms), -\/(f)) => describe(ms._1, ms._2, f)
-            case (None, -\/(f)) => describe(f)
-            case _ => point(())
-          }
-        }
-
-        _ <- reportToAll(nms)
-      } yield e
-    )
+    e
   }
 }

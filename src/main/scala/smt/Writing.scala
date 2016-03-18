@@ -1,6 +1,6 @@
 package smt
 
-import scalaz.{Scalaz, Monoid}
+import scalaz.{\/, Scalaz, Monoid}
 import Scalaz._
 import smt.migration.Script
 
@@ -39,6 +39,13 @@ object UpMoveState {
   def downsToApply(downs: List[Script]): UpMoveState = UpMoveState(downsToApply = downs)
 }
 
+class UpMoveStateHolder {
+  var ums = UpMoveState()
+  def add(u: UpMoveState): Unit = {
+    ums = ums ⊹ u
+  }
+}
+
 case class DownMoveState(
                           appliedDowns: List[Script] = Nil,
                           crashedDown: Option[Script] = None
@@ -57,7 +64,14 @@ object DownMoveState {
 
   def appliedDown(down: Script): DownMoveState = DownMoveState(appliedDowns = List(down))
 
-  def crashedDown(up: Script): DownMoveState = DownMoveState(crashedDown = Some(up))
+  def crashedDown(down: Script): DownMoveState = DownMoveState(crashedDown = Some(down))
+}
+
+class DownMoveStateHolder {
+  var dms = DownMoveState()
+  def add(d: DownMoveState): Unit = {
+    dms = dms ⊹ d
+  }
 }
 
 case class NamedMoveStates(actions: List[(String, MoveState)])
@@ -72,4 +86,22 @@ object NamedMoveStates {
   }
   
   def namedMoveState(name: String)(ms: MoveState): NamedMoveStates = NamedMoveStates(List((name, ms)))
+}
+
+class NamedMoveStatesHolder {
+  var nms = NamedMoveStates.sg.zero
+
+  def addDownMoveStateOf(name: String)(f: DownMoveStateHolder => String \/ Unit): String \/ Unit = {
+    val dms = new DownMoveStateHolder()
+    val r = f(dms)
+    nms = nms ⊹ NamedMoveStates(List((name, dms.dms)))
+    r
+  }
+
+  def addUpMoveStateOf(name: String)(f: UpMoveStateHolder => String \/ Unit): String \/ Unit = {
+    val ums = new UpMoveStateHolder()
+    val r = f(ums)
+    nms = nms ⊹ NamedMoveStates(List((name, ums.ums)))
+    r
+  }
 }

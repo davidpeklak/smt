@@ -3,6 +3,7 @@ package smt.db
 import smt.migration.{Direction, Script, MigrationInfo}
 import scalaz.\/
 import sbt.Logger
+import java.util.Date
 
 trait Connection {
 
@@ -29,4 +30,7 @@ trait Connection {
   def releaseLock(logger: Logger)(lock: String): String \/ Unit
 
   def close(logger: Logger)(): String \/ Unit
+
+  def add(logger: Logger, name: String, hash: Seq[Byte], dateTime: Date, user: String, remark: String): String \/ Unit = add(logger)(new MigrationInfo(name, hash, dateTime, Some(user), Some(remark)))
+
 }

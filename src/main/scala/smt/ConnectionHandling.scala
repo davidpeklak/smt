@@ -6,18 +6,18 @@ import UpMoveState._
 import DownMoveState._
 import NamedMoveStates._
 import scalaz.Scalaz._
-import smt.util.TraverseStackSafeSyntax
-import TraverseStackSafeSyntax._
 import smt.db._
 import smt.migration._
 import smt.MigrationHandling._
-import smt.migration.Group
-import smt.migration.MigrationInfo
-import scala.Some
-import smt.migration.Script
-import smt.migration.Migration
+import sbt.Logger
+import smt.util.SeqHaerte.SeqSyntax._
+import smt.util.EitherHaerte.EitherSyntax._
 
-trait ConnectionHandling[T] extends ConnectionAction[T] {
+import scalaz.{\/-, -\/, \/}
+
+case class MigrationInfoWithDowns(mi: MigrationInfo, downs: Seq[Script])
+
+object ConnectionHandling {
 
   def now: Date = new Date
 
@@ -36,7 +36,7 @@ trait ConnectionHandling[T] extends ConnectionAction[T] {
                                common: Seq[Common],
                                diffOnDb: Seq[MigrationInfo],
                                diffOnRepo: Seq[(Migration, Seq[Byte])]
-                               )
+                             )
 
   def common2(mis: Seq[MigrationInfo], ms: HashedMigrationSeq): CommonMigrations = {
     val misInit = mis.drop(ms.initMig)
@@ -54,121 +54,127 @@ trait ConnectionHandling[T] extends ConnectionAction[T] {
     )
   }
 
-  def latestCommon(mhs: HashedMigrationSeq): EDKleisli[Option[Common]] = {
-    state().map(latestCommon2(_, mhs))
+  def latestCommon(mhs: HashedMigrationSeq)(connection: Connection, logger: Logger): String \/ Option[Common] = {
+    connection.state(logger).map(latestCommon2(_, mhs))
   }
 
-  def common(mhs: HashedMigrationSeq): EDKleisli[CommonMigrations] = {
-    state().map(common2(_, mhs))
+  def common(mhs: HashedMigrationSeq)(connection: Connection, logger: Logger): String \/ CommonMigrations = {
+    connection.state(logger).map(common2(_, mhs))
   }
 
-  case class MigrationInfoWithDowns(mi: MigrationInfo, downs: Seq[Script])
-
-
-  def migrationsToRevert(latestCommon: Option[Seq[Byte]]): EDKleisli[Seq[MigrationInfo]] = {
-    state().map(_.reverse.takeWhile(mi => !latestCommon.exists(_ == mi.hash)))
+  def migrationsToRevert(latestCommon: Option[Seq[Byte]])(connection: Connection, logger: Logger): String \/ Seq[MigrationInfo] = {
+    connection.state(logger).map(_.reverse.takeWhile(mi => !latestCommon.exists(_ == mi.hash)))
   }
 
-  def enrichMigrationWithDowns(mi: MigrationInfo): EDKleisli[MigrationInfoWithDowns] = {
-    downs(mi.hash).map(MigrationInfoWithDowns(mi, _))
+  def enrichMigrationWithDowns(mi: MigrationInfo)(connection: Connection, logger: Logger): String \/ MigrationInfoWithDowns = {
+    connection.downs(logger)(mi.hash).map(MigrationInfoWithDowns(mi, _))
   }
 
-  def testMigration(m: Migration): EDKleisli[Unit] = {
-    m.tests.toList.traverse__(doTest)
+  def testMigration(m: Migration)(connection: Connection, logger: Logger): String \/ Unit = {
+    m.tests.travE_(_.run(connection)(logger))
   }
 
   def migrationsToApply(mhs: HashedMigrationSeq, latestCommon: Option[Seq[Byte]]): HashedMigrationSeq = {
     mhs.copy(migs = mhs.migs.reverse.takeWhile(mh => !latestCommon.exists(_ == mh._2)).reverse)
   }
-
-  def applyGroup(group: Group): upMoveTypes.EWDKleisli[Unit] = {
-    import upMoveTypes._
-    import EWSyntax._
-
-    def apl(up: Script): upMoveTypes.EWDKleisli[Unit] = {
-      liftE(applyScript(up, Up)) :-\/++> crashedUp(up) :\/-++> appliedUp(up)
-    }
-
-    group.ups.toList.traverse__(apl) :\/-++> (downsToApply(group.downs.toList) ⊹ appliedUpsWithDowns(group.ups.toList))
-  }
 }
 
-trait AddHandling[T] extends AddAction[T] with ConnectionHandling[T] {
+object AddHandling {
 
-  def rewriteMigration(mid: MigrationInfoWithDowns, dms: DownMoveState, hash: Seq[Byte]): EDKleisli[Unit] = {
+  def rewriteMigration(mid: MigrationInfoWithDowns, dms: DownMoveState, hash: Seq[Byte], user: String, remark: String)(connection: Connection, logger: Logger): String \/ Unit = {
     val downsToWrite = mid.downs.reverse.map(Some(_)).zipAll(dms.appliedDowns.map(Some(_)) :+ dms.crashedDown, None, None)
       .dropWhile(t => t._1 == t._2).map(_._1.toSeq).flatten.reverse
 
-    addDowns(hash, downsToWrite) >> add(mid.mi.name, hash, now)
+    connection.addDowns(logger)(hash, downsToWrite) >>
+      connection.add(logger, mid.mi.name, hash, ConnectionHandling.now, user, remark)
   }
 
-  def revertMigration(mid: MigrationInfoWithDowns): downMoveTypes.EWDKleisli[Unit] = {
-    import downMoveTypes._
-    import EWSyntax._
+  def revertMigration(mid: MigrationInfoWithDowns, user: String, remark: String)(connection: Connection, logger: Logger, dms: DownMoveStateHolder): String \/ Unit = {
 
-    def applyScriptAndWrite(down: Script): EWDKleisli[Unit] = {
-      liftE(applyScript(down, Down)) :-\/++> crashedDown(down) :\/-++> appliedDown(down)
+    def applyScriptAndWrite(down: Script): String \/ Unit = {
+      val r = connection.applyScript(logger)(down, Down)
+      r match {
+        case -\/(_) => dms.add(crashedDown(down))
+        case \/-(()) => dms.add(appliedDown(down))
+      }
+      r
     }
 
-    liftE(removeDowns(mid.mi.hash) >> remove(mid.mi.hash)) >>
-      mid.downs.reverse.toList.traverse__(applyScriptAndWrite).recover((dms, f) => {
-        liftE(rewriteMigration(mid, dms, failHash(f)) >> failure(f))
-      })
+    val r = connection.removeDowns(logger)(mid.mi.hash) >>
+      connection.remove(logger)(mid.mi.hash) >>
+      mid.downs.reverse.travE_(applyScriptAndWrite)
+
+    r.onLeftDo(f => rewriteMigration(mid, dms.dms, failHash(f), user, remark)(connection, logger))
   }
 
-  def revertToLatestCommon(latestCommon: Option[Seq[Byte]], arb: Boolean): namedMoveTypes.EWDKleisli[Unit] = {
-    import namedMoveTypes._
-    import downMoveTypes.EWSyntax._
-
+  def revertToLatestCommon(latestCommon: Option[Seq[Byte]], arb: Boolean, user: String, remark: String)(connection: Connection, logger: Logger, nms: NamedMoveStatesHolder): String \/ Unit = {
     for {
-      mis <- liftE(migrationsToRevert(latestCommon))
-      mids <- liftE(mis.toList.traverse(enrichMigrationWithDowns))
+      mis <- ConnectionHandling.migrationsToRevert(latestCommon)(connection, logger)
+      mids <- mis.travE(mi => ConnectionHandling.enrichMigrationWithDowns(mi)(connection, logger))
       _ <- {
-        if (mids.isEmpty || arb) mids.toList.traverse[EWDKleisli, Unit](mid => revertMigration(mid).mapWritten(namedMoveState(mid.mi.name)))
-        else liftE(failure("Will not roll back migrations " + mids.map(_.mi.name).mkString(", ") + ", because allow-rollback is set to false"))
+        if (mids.isEmpty || arb) mids.travE_(mid => nms.addDownMoveStateOf(mid.mi.name)(dms => revertMigration(mid, user, remark)(connection, logger, dms)))
+        else -\/("Will not roll back migrations " + mids.map(_.mi.name).mkString(", ") + ", because allow-rollback is set to false")
       }
     } yield ()
-
   }
 
-  def applyMigrations(ms: Seq[Migration], imo: Option[(Int, String)], arb: Boolean, runTests: Boolean): namedMoveTypes.EWDKleisli[Unit] = {
-    import namedMoveTypes._
-
+  def applyMigrations(ms: Seq[Migration], imo: Option[(Int, String)], arb: Boolean, runTests: Boolean, user: String, remark: String)(connection: Connection, logger: Logger, nms: NamedMoveStatesHolder): String \/ Unit = {
     val mhs = hashMigrations(ms, imo)
 
     for {
-      lcho <- liftE(latestCommon(mhs).map(_.map(_.db.hash)))
-      _ <- revertToLatestCommon(lcho, arb)
-      _ <- applyMigrations(mhs, lcho, runTests)
+      lcho <- ConnectionHandling.latestCommon(mhs)(connection, logger).map(_.map(_.db.hash))
+      _ <- revertToLatestCommon(lcho, arb, user, remark)(connection, logger, nms)
+      _ <- doApplyMigrations(mhs, lcho, runTests, user, remark)(connection, logger, nms)
     } yield ()
   }
 
-  def applyMigrations(mhs: HashedMigrationSeq, latestCommon: Option[Seq[Byte]], runTests: Boolean): namedMoveTypes.EWDKleisli[Unit] = {
-    import namedMoveTypes._
-    import upMoveTypes.EWSyntax._
-
-    migrationsToApply(mhs, latestCommon).migs.toList.traverse__ {
-      case (m, h) =>
+  def doApplyMigrations(mhs: HashedMigrationSeq, latestCommon: Option[Seq[Byte]], runTests: Boolean, user: String, remark: String)(connection: Connection, logger: Logger, nms: NamedMoveStatesHolder): String \/ Unit = {
+    ConnectionHandling.migrationsToApply(mhs, latestCommon).migs.travE_{
+      case (m, h) => nms.addUpMoveStateOf(m.name)(ums => {
         if (runTests) for {
-          _ <- applyMigration(m, h).mapWritten(namedMoveState(m.name))
-          _ <- liftE(testMigration(m))
+          _ <- applyMigration(m, h, user, remark)(connection, logger, ums)
+          _ <- ConnectionHandling.testMigration(m)(connection, logger)
         } yield ()
-        else applyMigration(m, h).mapWritten(namedMoveState(m.name))
+        else applyMigration(m, h, user, remark)(connection, logger, ums)
+      })
     }
   }
 
-  def applyMigration(m: Migration, hash: Seq[Byte]): upMoveTypes.EWDKleisli[Unit] = {
-    import upMoveTypes._
-    import EWSyntax._
-
-    def finalize(downs: List[Script], hash: Seq[Byte]): EDKleisli[Unit] = {
-      addDowns(hash, downs) >> add(m.name, hash, now)
+  def applyMigration(m: Migration, hash: Seq[Byte], user: String, remark: String)(connection: Connection, logger: Logger, ums: UpMoveStateHolder): String \/ Unit = {
+    def finalize(downs: List[Script], hash: Seq[Byte]): String \/ Unit = {
+      connection.addDowns(logger)(hash, downs) >>
+        connection.add(logger, m.name, hash, ConnectionHandling.now, user, remark)
     }
 
-    m.groups.toList.traverse__(applyGroup).conclude {
-      (ums, f) => liftE(finalize(ums.downsToApply, failHash(f)) >> failure(f))
-    } {
-      (ums, _) => liftE(finalize(ums.downsToApply, hash))
+    val r = m.groups.travE_(g => applyGroup(g)(connection, logger, ums))
+
+    r match {
+      case err@ -\/(f) => {
+        finalize(ums.ums.downsToApply, failHash(f)) >>
+          err
+      }
+      case \/-(()) => finalize(ums.ums.downsToApply, hash)
     }
+  }
+
+  def applyGroup(group: Group)(connection: Connection, logger: Logger, ums: UpMoveStateHolder): String \/ Unit = {
+    def apl(up: Script): String \/ Unit = {
+      val r = connection.applyScript(logger)(up, Up)
+      r match {
+        case -\/(_) => ums.add(crashedUp(up))
+        case \/-(()) => ums.add(appliedUp(up))
+      }
+      r
+    }
+
+    val r = group.ups.travE_(apl)
+    r match {
+      case -\/(_) => {}
+      case \/-(()) => {
+        ums.add(downsToApply(group.downs.toList))
+        ums.add(appliedUpsWithDowns(group.ups.toList))
+      }
+    }
+    r
   }
 }

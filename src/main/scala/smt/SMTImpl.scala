@@ -7,10 +7,6 @@ import report.Reporter
 import java.io.File
 import smt.migration.FileSplitters._
 import smt.migration.Migration
-import smt.db.DbAction.HasDb
-import smt.report.ReportersAction.HasReporters
-import smt.describe.DescribeAction.HasLogger
-import smt.db.AddAction.{HasUser, HasRemark}
 import scalaz.\/
 
 object SMTImpl {
@@ -22,24 +18,9 @@ object SMTImpl {
 
   private def throwLeft[T](s: TaskStreams)(te: String \/ T): T = te.fold[T]((e: String) => failException(s)(e), identity)
 
-  case class StateHandlingDep(db: Database, logger: Logger)
-
-  val stateHandling = new StateHandling[StateHandlingDep] {
-    lazy val hasDb: HasDb[StateHandlingDep] = _.db
-    lazy val hasLogger: HasLogger[StateHandlingDep] = _.logger
-  }
-
-  val handling = new Handling[HandlingDep] {
-    lazy val hasDb: HasDb[HandlingDep] = _.db
-    lazy val hasLogger: HasLogger[HandlingDep] = _.logger
-    lazy val hasReporters: HasReporters[HandlingDep] = _.rps
-    lazy val hasUser: HasUser[HandlingDep] =  _.user
-    lazy val hasRemark: HasRemark[HandlingDep] =  _.remark
-  }
-
   def showDbState(db: Database, ms: Seq[Migration], imo: Option[(Int, String)], s: TaskStreams): Unit = {
 
-    val result = stateHandling.common(MigrationHandling.hashMigrations(ms, imo)).run(StateHandlingDep(db, s.log)).run
+    val result = StateHandling.common(MigrationHandling.hashMigrations(ms, imo))(db, s.log)
 
     result.foreach(co => {
       co.common.foreach(st => s.log.info(st.toString))
@@ -49,7 +30,7 @@ object SMTImpl {
   }
 
   def showLatestCommon(db: Database, ms: Seq[Migration], imo: Option[(Int, String)], s: TaskStreams): Unit = {
-    val result = stateHandling.latestCommon(MigrationHandling.hashMigrations(ms, imo)).run(StateHandlingDep(db, s.log)).run
+    val result = StateHandling.latestCommon(MigrationHandling.hashMigrations(ms, imo))(db, s.log)
 
     result.foreach(lco => s.log.info(lco.map(_.toString).getOrElse("None")))
     throwLeft(s)(result)
@@ -64,9 +45,8 @@ object SMTImpl {
   }
 
   def doApplyMigrations(db: Database, ms: Seq[Migration], imo: Option[(Int, String)], arb: Boolean, runTests: Boolean, rs: Seq[Reporter], user: String, remark: Option[String], s: TaskStreams): Unit = {
-    val action = handling.applyMigrationsAndReport(ms, imo, arb, runTests)
-    val dep = HandlingDep(db, rs.toList, s.log, user, remark)
-    throwLeft(s)(action.run(dep).run)
+    val result = Handling.applyMigrationsAndReport(ms, imo, arb, runTests, user, remark.getOrElse(""))(db, s.log, rs.toList, new NamedMoveStatesHolder())
+    throwLeft(s)(result)
   }
 
   def migrateTo(args: Seq[String], db: Database, ms: Seq[Migration], imo: Option[(Int, String)], arb: Boolean, runTests: Boolean, rs: Seq[Reporter], user: String, s: TaskStreams) {
@@ -96,8 +76,7 @@ object SMTImpl {
         val relPath = IO.pathSplit(dir).toSeq
         val fullPath = relPath.foldLeft[File](sourceDir)((p, s) => p / s)
         val script = OneFileOneScriptSplitter(fullPath).head
-        val action = stateHandling.applyScript(script)
-        val result = action.run(StateHandlingDep(db, s.log)).run
+        val result = StateHandling.applyScript(script)(db, s.log)
         throwLeft(s)(result)
       }
       case Seq() => throw new Exception("Path expected.")
