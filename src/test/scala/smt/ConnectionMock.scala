@@ -31,5 +31,9 @@ class ConnectionMock extends Connection {
   def testScript(logger: Logger)(script: Script): String \/ Unit = \/-(())
 
   def close(logger: Logger)(): String \/ Unit = \/-(())
+
+  def acquireLock(logger: Logger)(): String \/ String  = \/-("lock")
+
+  def releaseLock(logger: Logger)(lock: String): String \/ Unit = \/-(())
 }
 
