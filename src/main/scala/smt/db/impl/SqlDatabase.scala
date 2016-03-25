@@ -8,13 +8,17 @@ import Util._
 import collection.Map.empty
 import smt.db.{Connection, Database}
 import smt.migration.{Script, MigrationInfo, Direction}
-import scalaz.{\/-, \/}
+import scalaz.{-\/, \/-, \/}
 import scala.collection.immutable.Stream.Empty
 import sbt.Logger
 
 object SqlDatabase {
   def fromTryCatch[A](block: => A): String \/ A = {
-    \/.fromTryCatch(block).leftMap(_.toString)
+    try {
+      \/-(block)
+    } catch {
+      case e: Exception => -\/(e.toString)
+    }
   }
 }
 
