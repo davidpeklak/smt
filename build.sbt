@@ -1,7 +1,7 @@
 import bintray.Keys._
 
 lazy val commonSettings = Seq(
-  version in ThisBuild := "0.4.5",
+  version in ThisBuild := "0.5.0",
   organization in ThisBuild := "com.github.davidpeklak"
 )
 
@@ -11,8 +11,6 @@ lazy val root = (project in file(".")).
     sbtPlugin := true,
     name := "smt",
     description := "scala database migration tool",
-    // This is an example.  bintray-sbt requires licenses to be specified
-    // (using a canonical name).
     licenses += ("MIT", url("http://opensource.org/licenses/MIT")),
     publishMavenStyle := false,
     repository in bintray := "sbt-plugins",
