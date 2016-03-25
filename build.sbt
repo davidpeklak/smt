@@ -3,7 +3,7 @@ import bintray.Keys._
 scalaVersion := "2.10.6"
 
 lazy val commonSettings = Seq(
-  version in ThisBuild := "0.5.0",
+  version in ThisBuild := "0.5.1",
   organization in ThisBuild := "com.github.davidpeklak"
 )
 
