@@ -4,12 +4,13 @@ import org.scalatest.FunSuite
 import MigrationGen._
 import org.scalacheck.Gen
 import java.util.Date
+import smt.MetaConnectionHandling.MigrationInfoWithDowns
 import smt.migration._
 import smt.migration.Group
 import scalaz.{\/-, \/, -\/}
 import smt.migration.Test
 import smt.migration.Migration
-import smt.db.Connection
+import smt.db.{DatabaseId, Connection}
 import sbt.{Logger, Level}
 
 class DbHandlingTest extends FunSuite with PropTesting {
@@ -24,27 +25,30 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
   test("apply one migration - smoke") {
 
-    val mig = migGen.apply(Gen.Params()).get // bochn
+    val databases = Map(DatabaseId("KAKTUS") -> new DatabaseMock(new ConnectionMock))
 
-    AddHandling.applyMigrations(ms = Seq(mig), imo = None, arb = false, runTests = true, user = "user", remark = "remark")(new ConnectionMock, logger, new NamedMoveStatesHolder())
+    val mig = migGen(databases).apply(Gen.Params()).get // bochn
+
+    MulipleDatabasesHandling.applyMigrations(ms = Seq(mig), imo = None, arb = false, runTests = true, user = "user", remark = "remark")(new MetaConnectionMock, databases, logger, new NamedMoveStatesHolder())
   }
 
-  test("apply 10000 migrations fea - smoke") {
+  test("apply 10000 migrations - smoke") {
 
-    val mig = migGen.apply(Gen.Params()).get // bochn
+    val databases = Map(DatabaseId("KAKTUS") -> new DatabaseMock(new ConnectionMock))
 
-    val conn = new ConnectionMock
+    val mig = migGen(databases).apply(Gen.Params()).get // bochn
 
-    AddHandling.applyMigrations(ms = Seq.fill(10000)(mig), imo = None, arb = false, runTests = true, user = "user", remark = "remark")(conn, logger, new NamedMoveStatesHolder())
+    val metaConn = new MetaConnectionMock
 
-    assert(conn.addCount === 10000)
+    MulipleDatabasesHandling.applyMigrations(ms = Seq.fill(10000)(mig), imo = None, arb = false, runTests = true, user = "user", remark = "remark")(metaConn, databases, logger, new NamedMoveStatesHolder())
+
+    assert(metaConn.addCount === 10000)
   }
 
   class ScriptRecordingConnectionMock extends ConnectionMock {
     var upScriptSeq: Seq[Script] = Seq()
     var downScriptSeq: Seq[Script] = Seq()
     var testScriptSeq: Seq[Script] = Seq()
-    var downss: Seq[(Seq[Byte], Seq[Script])] = Seq()
 
     override def applyScript(logger: Logger)(script: Script, direction: Direction): String \/ Unit = {
       if (direction == Up) upScriptSeq = upScriptSeq :+ script
@@ -59,11 +63,6 @@ class DbHandlingTest extends FunSuite with PropTesting {
       if (script.content.contains("bad")) -\/("BAD")
       else \/-(())
     }
-
-    override def addDowns(logger: Logger)(migHash: Seq[Byte], downs: Seq[Script]): String \/ Unit = {
-      downss = downss :+(migHash, downs)
-      \/-(())
-    }
   }
 
   test("apply one migration with test") {
@@ -71,11 +70,13 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val test: Test = ScriptTest.scriptTest(testScript)
 
-    val mig = migGen.map(_.copy(tests = Seq(test))).apply(Gen.Params()).get // bochn
-
     val conn = new ScriptRecordingConnectionMock
 
-    AddHandling.applyMigrations(ms = Seq(mig), imo = None, arb = false, runTests = true, user = "user", remark = "remark")(conn, logger, new NamedMoveStatesHolder())
+    val databases = Map(DatabaseId("KAKTUS") -> new DatabaseMock(conn))
+
+    val mig = migGen(databases).map(_.copy(tests = Seq(test))).apply(Gen.Params()).get // bochn
+
+    MulipleDatabasesHandling.applyMigrations(ms = Seq(mig), imo = None, arb = false, runTests = true, user = "user", remark = "remark")(new MetaConnectionMock, databases, logger, new NamedMoveStatesHolder())
 
     assert(conn.testScriptSeq.size === 1)
     assert(conn.testScriptSeq(0) === testScript)
@@ -86,11 +87,13 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val test: Test = ScriptTest.scriptTest(testScript)
 
-    val mig = migGen.map(_.copy(tests = Seq(test))).apply(Gen.Params()).get // bochn
-
     val conn = new ScriptRecordingConnectionMock
 
-    AddHandling.applyMigrations(ms = Seq(mig), imo = None, arb = false, runTests = false, user = "user", remark = "remark")(conn, logger, new NamedMoveStatesHolder())
+    val databases = Map(DatabaseId("KAKTUS") -> new DatabaseMock(conn))
+
+    val mig = migGen(databases).map(_.copy(tests = Seq(test))).apply(Gen.Params()).get // bochn
+
+    MulipleDatabasesHandling.applyMigrations(ms = Seq(mig), imo = None, arb = false, runTests = false, user = "user", remark = "remark")(new MetaConnectionMock, databases, logger, new NamedMoveStatesHolder())
 
     assert(conn.testScriptSeq.size === 0)
   }
@@ -99,8 +102,19 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
   val bad = Script("bad", "bad")
 
+  class DownsRecordingMetaConnectionMock extends MetaConnectionMock {
+    var downss: Seq[(Seq[Byte], Seq[Script])] = Seq()
+
+    override def addDowns(logger: Logger)(migHash: Seq[Byte], downs: Seq[Script]): String \/ Unit = {
+      downss = downss :+(migHash, downs)
+      \/-(())
+    }
+  }
+
   test("apply one migration that fails") {
-    val mig = Migration("mig1", Seq(
+    val dbId = DatabaseId("KAKTUS")
+
+    val mig = Migration(dbId, "mig1", Seq(
       Group(Seq(good(1), good(2)), Seq(good(3), good(4))),
       Group(Seq(good(5), bad), Seq(good(6), good(7))),
       Group(Seq(good(8), good(9)), Seq(good(10), good(11)))
@@ -108,34 +122,32 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val conn = new ScriptRecordingConnectionMock
 
-    val r = AddHandling.applyMigration(mig, MigrationHandling.hashMigration(mig, None), "user", "remark")(conn, logger, new UpMoveStateHolder())
+    val metaConn = new DownsRecordingMetaConnectionMock
 
-    r match {
-      case -\/(f) => println(f)
-      case _ => ()
-    }
+    SingleConnectionHandling.applyMigration(mig, MigrationHandling.hashMigration(mig, None), "user", "remark")(metaConn, conn, logger, new UpMoveStateHolder())
 
     assert(conn.upScriptSeq === Seq(good(1), good(2), good(5), bad))
-    assert(conn.downss.size === 1)
-    assert(conn.downss(0)._2 === Seq(good(3), good(4)))
+    assert(metaConn.downss.size === 1)
+    assert(metaConn.downss(0)._2 === Seq(good(3), good(4)))
   }
 
   test("revert one migration that fails") {
+    val dbId = DatabaseId("KAKTUS")
+
     val downs = Seq(good(1), good(2), bad, good(3), good(4))
-    val migInfo = MigrationInfo("migName", Seq[Byte](), new Date, None, None)
+    val migInfo = MigrationInfo(dbId, "migName", Seq[Byte](), new Date, None, None)
 
     val conn = new ScriptRecordingConnectionMock
 
-    val r = AddHandling.revertMigration(MigrationInfoWithDowns(migInfo, downs), "user", "remark")(conn, logger, new DownMoveStateHolder())
+    val metaConn = new DownsRecordingMetaConnectionMock
+
+    SingleConnectionHandling.revertMigration(MigrationInfoWithDowns(migInfo, downs), "user", "remark")(metaConn, conn, logger, new DownMoveStateHolder())
 
 
-    r match {
-      case -\/(f) => println(f)
-      case _ => ()
-    }
 
     assert(conn.downScriptSeq === Seq(good(4), good(3), bad))
-    assert(conn.downss.size === 1)
-    assert(conn.downss(0)._2 === Seq(good(1), good(2)))
+    assert(metaConn.downss.size === 1)
+    assert(metaConn.downss(0)._2 === Seq(good(1), good(2)))
   }
 }
+

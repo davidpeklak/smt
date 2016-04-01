@@ -3,6 +3,7 @@ package smt
 import org.scalatest.FunSuite
 import smt.MigrationGen._
 import org.scalacheck.Gen
+import smt.db.DatabaseId
 import smt.report.Reporter
 import scalaz.{\/-, \/}
 import sbt.{Level, Logger}
@@ -27,13 +28,17 @@ class HandlingTest extends FunSuite {
 
   test("apply one migration - verify reporter is called") {
 
-    val mig = migGen.apply(Gen.Params()).get // bochn
+    val databases = Map(DatabaseId("KAKTUS") -> new DatabaseMock(new ConnectionMock))
+
+    val mig = migGen(databases).apply(Gen.Params()).get // bochn
 
     val reporter = new ReporterMock
 
     val logger = new LoggerMock
 
-    Handling.applyMigrationsAndReport(ms = Seq(mig), imo = None, arb = false, runTests = true, "user", "remark")(new DatabaseMock(new ConnectionMock), logger, List(reporter), new NamedMoveStatesHolder())
+    val metaDb = new MetaDatabaseMock(new MetaConnectionMock)
+
+    Handling.applyMigrationsAndReport(ms = Seq(mig), imo = None, arb = false, runTests = true, "user", "remark")(metaDb, databases, logger, List(reporter))
 
     assert(reporter.called)
   }

@@ -5,17 +5,11 @@ import scala.util.control.Exception._
 import scala.collection.Map._
 import sbt.Logger
 
-class OracleDatabase(connection: => JConnection,
-                     tableSchema: Option[String] = None,
-                     migrationTableName: String = "MIGRATION",
-                     downTableName: String = "DOWN") extends SqlDatabase(
-  new OracleConnection(connection, tableSchema, migrationTableName, downTableName)
-)
 
-class OracleConnection(connection: JConnection,
+class OracleMetaConnection(connection: JConnection,
                        tableSchema: Option[String],
                        migrationTableName: String,
-                       downTableName: String) extends SqlConnection(connection, tableSchema, migrationTableName, downTableName) {
+                       downTableName: String) extends SqlMetaConnection(connection, tableSchema, migrationTableName, downTableName) {
   def tableExistsCatcher(logger: Logger)(name: String): Catcher[Unit] = {
     case e: SQLException if e.getErrorCode == 955 => {
       logger.info("Ignoring SqlExecption " + e.getErrorCode + ", " + e.getMessage)

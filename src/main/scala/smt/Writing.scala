@@ -39,13 +39,6 @@ object UpMoveState {
   def downsToApply(downs: List[Script]): UpMoveState = UpMoveState(downsToApply = downs)
 }
 
-class UpMoveStateHolder {
-  var ums = UpMoveState()
-  def add(u: UpMoveState): Unit = {
-    ums = ums ⊹ u
-  }
-}
-
 case class DownMoveState(
                           appliedDowns: List[Script] = Nil,
                           crashedDown: Option[Script] = None
@@ -65,6 +58,13 @@ object DownMoveState {
   def appliedDown(down: Script): DownMoveState = DownMoveState(appliedDowns = List(down))
 
   def crashedDown(down: Script): DownMoveState = DownMoveState(crashedDown = Some(down))
+}
+
+class UpMoveStateHolder {
+  var ums = UpMoveState()
+  def add(u: UpMoveState): Unit = {
+    ums = ums ⊹ u
+  }
 }
 
 class DownMoveStateHolder {

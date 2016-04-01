@@ -3,15 +3,17 @@ package smt
 import org.scalacheck.Gen
 import org.scalacheck.Gen._
 import GenUtil._
+import smt.db.{Database, DatabaseId}
 import smt.migration.{Script, Migration, Group}
 
 object MigrationGen {
-  def migGen: Gen[Migration] = {
+  def migGen(databases: Map[DatabaseId, Database]): Gen[Migration] = {
     for {
+      dbId <- oneOf(databases.keys.toList)
       name <- alphaStr
       numberOfGroups <- choose(1, 10)
       groups <- listOfN(numberOfGroups, groupGen)
-    } yield Migration(name, groups, Seq())
+    } yield Migration(dbId, name, groups, Seq())
   }
 
   def groupGen: Gen[Group] = {
@@ -37,7 +39,7 @@ object MigrationGen {
     contentSeq(m1) == contentSeq(m2)
   }
 
-  def listOfDistinctMig(l: Int): Gen[List[Migration]] = {
-    listOfDistinctN(l, migGen, migEq)
+  def listOfDistinctMig(databases: Map[DatabaseId, Database])(l: Int): Gen[List[Migration]] = {
+    listOfDistinctN(l, migGen(databases), migEq)
   }
 }

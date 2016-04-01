@@ -6,7 +6,7 @@ import scala.util.control.Exception.{Catcher, catching}
 import smt.util.Util
 import Util._
 import collection.Map.empty
-import smt.db.{Connection, Database}
+import smt.db.{DatabaseId, MetaConnection, Connection, Database}
 import smt.migration.{Script, MigrationInfo, Direction}
 import scalaz.{-\/, \/-, \/}
 import scala.collection.immutable.Stream.Empty
@@ -20,13 +20,6 @@ object SqlDatabase {
       case e: Exception => -\/(e.toString)
     }
   }
-}
-
-abstract class SqlDatabase(sqlConn: => SqlConnection) extends Database {
-
-  import SqlDatabase._
-
-  def connection(): String \/ SqlConnection = fromTryCatch(sqlConn)
 }
 
 object SqlConnection {
@@ -55,15 +48,40 @@ object SqlConnection {
   }
 }
 
-abstract class SqlConnection(protected val cnx: JConnection,
+trait CommonSqlConnection {
+  commonSqlConnection =>
+
+  import SqlDatabase._
+  import SqlConnection._
+
+  val cnx: JConnection
+
+  def applyScript(logger: Logger)(script: Script, direction: Direction): String \/ Unit = fromTryCatch {
+    logger.info("applying " + direction + " script: " + script)
+    withStatement(cnx)(_.execute(script.content))
+  }
+
+
+  def testScript(logger: Logger)(script: Script): String \/ Unit = fromTryCatch {
+    logger.info("applying test script: " + script)
+    withStatement(cnx)(_.execute(script.content))
+  }
+
+  def close(logger: Logger)(): \/[String, Unit] = fromTryCatch(cnx.close())
+}
+
+abstract class SqlConnection(val cnx: JConnection) extends Connection with CommonSqlConnection
+
+abstract class SqlMetaConnection(val cnx: JConnection,
                              tableSchema: Option[String],
                              migrationTableName: String,
-                             downTableName: String) extends Connection {
+                             downTableName: String) extends MetaConnection with CommonSqlConnection {
   sqlConnection =>
 
   def noDataCatcher[A]: Catcher[Seq[A]]
 
   val NAME = "NAME"
+  val DBID = "DBID"
   val HASH = "HASH"
   val TIME = "TIME"
   val INDEX = "INDX"
@@ -83,8 +101,8 @@ abstract class SqlConnection(protected val cnx: JConnection,
   val queryMigrationTableString = "SELECT * FROM " + MIGRATION
 
   def insertMigrationString(mi: MigrationInfo, index: Long): String = {
-    val cols = Seq(Some(INDEX), Some(NAME), Some(HASH), Some(TIME), mi.user.map(_ => USER), mi.remark.map(_ => REMARK)).flatten
-    val vals = Seq(Some(index.toString), Some(" '" + mi.name + "' "), Some(" '" + bytesToHex(mi.hash) + "' "), Some(mi.dateTime.getTime.toString), mi.user.map(" '" + _ + "' "), mi.remark.map(" '" + _ + "' ")).flatten
+    val cols = Seq(Some(INDEX), Some(NAME), Some(DBID), Some(HASH), Some(TIME), mi.user.map(_ => USER), mi.remark.map(_ => REMARK)).flatten
+    val vals = Seq(Some(index.toString), Some(" '" + mi.name + "' "), Some(" '" + mi.dbId.id + "' "), Some(" '" + bytesToHex(mi.hash) + "' "), Some(mi.dateTime.getTime.toString), mi.user.map(" '" + _ + "' "), mi.remark.map(" '" + _ + "' ")).flatten
 
     "INSERT INTO " + MIGRATION + "( " + cols.mkString(", ") + " )" +
       " VALUES ( " + vals.mkString(", ") + " )"
@@ -194,21 +212,11 @@ abstract class SqlConnection(protected val cnx: JConnection,
     withStatement(cnx)(_.execute(removeDownsString(migHash)))
   }
 
-  def applyScript(logger: Logger)(script: Script, direction: Direction): String \/ Unit = fromTryCatch {
-    logger.info("applying " + direction + " script: " + script)
-    withStatement(cnx)(_.execute(script.content))
-  }
-
-
-  def testScript(logger: Logger)(script: Script): String \/ Unit = fromTryCatch {
-    logger.info("applying test script: " + script)
-    withStatement(cnx)(_.execute(script.content))
-  }
-
   def state(logger: Logger): String \/ Seq[MigrationInfo] = fromTryCatch(withStatement(cnx)(st => {
     mapResultSet(st.executeQuery(queryMigrationTableString))(rs => {
       (MigrationInfo(
         name = rs.getString(NAME),
+        dbId = DatabaseId(rs.getString(DBID)),
         hash = hexToBytes(rs.getString(HASH)),
         dateTime = new Date(rs.getLong(TIME)),
         user = Option(rs.getString(USER)),
@@ -228,6 +236,4 @@ abstract class SqlConnection(protected val cnx: JConnection,
       (down, index)
     }).toSeq.sortBy(_._2).map(_._1)
   }, noDataCatcher))
-
-  def close(logger: Logger)(): \/[String, Unit] = fromTryCatch(cnx.close())
 }

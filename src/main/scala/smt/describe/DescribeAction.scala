@@ -30,12 +30,28 @@ object DescribeAction {
     val upsWithoutDowns = appliedUpsWithDowns.map(Some(_)).zipAll(appliedUps.map(Some(_)), None, None)
       .dropWhile(t => t._1 == t._2).map(_._2.toSeq).flatten
 
-    Seq("Failed to fully apply migration " + migName, "Applied the following up scripts:") ++
-      appliedUps.map(_.toString) ++
-      Seq("The following up script crashed:") ++
-      Seq(crashedUp.map(_.toString).getOrElse("(None)")) ++
-      Seq("Because of: " + f.toString, "The following up scripts have been applied without recording corresponding down scripts,", "revert them manually before continuing:") ++
-      upsWithoutDowns.map(_.name)
+    val upScriptsReport =
+      if (appliedUps.isEmpty) Seq("No up scripts have been applied.")
+      else Seq("Applied the following up scripts:") ++ appliedUps.map(_.toString)
+
+    val crashedUpScriptReport =
+      crashedUp.map(u => Seq("The following up script crashed:", u.toString)).getOrElse(Seq())
+
+    val failure = Seq("Failure: " + f)
+
+    val missingDowns =
+      if (upsWithoutDowns.isEmpty) Seq()
+      else Seq("The following up scripts have been applied without recording corresponding down scripts,",
+        "revert them manually before continuing:") ++ upsWithoutDowns.map(_.name) ++
+        Seq("", "************************************************************",
+          "** DO NOT ATTEMPT REDELPOYMENT BEFORE THIS HAS BEEN FIXED **",
+          "************************************************************")
+
+    Seq("Failed to fully apply migration " + migName) ++
+      upScriptsReport ++
+      crashedUpScriptReport ++
+      failure ++
+      missingDowns
   }
 
 }

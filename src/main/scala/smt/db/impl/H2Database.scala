@@ -5,17 +5,10 @@ import scala.util.control.Exception._
 import sbt.Logger
 import SqlConnection._
 
-class H2Database(connection: => JConnection,
-                 tableSchema: Option[String] = None,
-                 migrationTableName: String = "MIGRATION",
-                 downTableName: String = "DOWN") extends SqlDatabase(
-  new H2Connection(connection, tableSchema, migrationTableName, downTableName)
-)
-
-class H2Connection(connection: JConnection,
+class H2MetaConnection(connection: JConnection,
                    tableSchema: Option[String],
                    migrationTableName: String,
-                   downTableName: String) extends SqlConnection(connection, tableSchema, migrationTableName, downTableName) {
+                   downTableName: String) extends SqlMetaConnection(connection, tableSchema, migrationTableName, downTableName) {
   def tableExistsCatcher(logger: Logger)(name: String): Catcher[Unit] = {
     case e: SQLException if e.getErrorCode == 42101 && e.getMessage.contains(("Table \"" + name + "\" already exists")) => {
       logger.info("Ignoring SqlExecption " + e.getErrorCode + ", " + e.getMessage)

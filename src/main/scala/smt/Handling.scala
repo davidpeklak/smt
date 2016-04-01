@@ -10,87 +10,90 @@ import smt.migration.{HashedMigrationSeq, MigrationInfo, Migration, Up}
 import smt.util.EitherHaerte.EitherSyntax._
 
 /**
-  * uses functions of ConnectionHandling,
+  * uses functions of MetaConnectionHandling,
   * wraps around connection opening, locking and closing
   */
 object StateHandling {
 
-  def withConnection[U](action: (Connection, Logger) => String \/ U)(db: Database, logger: Logger): String \/ U = {
+  def withMetaConnection[U](effect: (MetaConnection, Logger) => String \/ U)(db: MetaDatabase, logger: Logger): String \/ U = {
     for {
       c <- db.connection()
       r <- {
         c.init(logger) >>
-          action(c, logger)
+          effect(c, logger)
       }.andFinally(c.close(logger))
     } yield r
   }
 
-  def withLock[U](action: (Connection, Logger) => String \/ U)(c: Connection, logger: Logger): String \/ U = {
+  def withLock[U](effect: (MetaConnection, Logger) => String \/ U)(c: MetaConnection, logger: Logger): String \/ U = {
     for {
       lock <- c.acquireLock(logger)
       r <- {
-        action(c, logger)
+        effect(c, logger)
       }.andFinally(c.releaseLock(logger)(lock))
     } yield r
   }
 
-  def withLockedConnection[U](action: (Connection, Logger) => String \/ U)(db: Database, logger: Logger): String \/ U = {
-    withConnection((c, l) => {
-      withLock(action)(c, l)
+  def withLockedMetaConnection[U](effect: (MetaConnection, Logger) => String \/ U)(db: MetaDatabase, logger: Logger): String \/ U = {
+    withMetaConnection((c, l) => {
+      withLock(effect)(c, l)
     })(db, logger)
   }
 
-  def state(db: Database, logger: Logger): String \/ Seq[MigrationInfo] = {
-    withConnection((c, l) => c.state(l))(db, logger)
+  def state(db: MetaDatabase, logger: Logger): String \/ Seq[MigrationInfo] = {
+    withMetaConnection((c, l) => c.state(l))(db, logger)
   }
 
-  def latestCommon(mhs: HashedMigrationSeq)(db: Database, logger: Logger): String \/ Option[ConnectionHandling.Common] = {
-    withConnection((c, l) => ConnectionHandling.latestCommon(mhs)(c, l))(db, logger)
+  def latestCommon(mhs: HashedMigrationSeq)(db: MetaDatabase, logger: Logger): String \/ Option[MigrationHandling.Common] = {
+    withMetaConnection((c, l) => MetaConnectionHandling.latestCommon(mhs)(c, l))(db, logger)
   }
 
-  def common(mhs: HashedMigrationSeq)(db: Database, logger: Logger): String \/ ConnectionHandling.CommonMigrations = {
-    withConnection((c, l) => ConnectionHandling.common(mhs)(c, l))(db, logger)
-  }
-
-  def applyScript(scr: migration.Script)(db: Database, logger: Logger): String \/ Unit = {
-    withLockedConnection((c, l) => c.applyScript(l)(scr, Up))(db, logger)
+  def common(mhs: HashedMigrationSeq)(db: MetaDatabase, logger: Logger): String \/ MigrationHandling.CommonMigrations = {
+    withMetaConnection((c, l) => MetaConnectionHandling.common(mhs)(c, l))(db, logger)
   }
 }
 
 /**
-  * uses functions of AddHandling,
+  * uses functions of MutatingHandling,
   * wraps around connection opening, locking and closing
   */
 object Handling {
 
-  def withConnection[U](action: (Connection, Logger, NamedMoveStatesHolder) => String \/ U)(db: Database, logger: Logger, nms: NamedMoveStatesHolder): String \/ U = {
+  def withMetaConnection[U](effect: (MetaConnection, Logger, NamedMoveStatesHolder) => String \/ U)(metaDb: MetaDatabase, logger: Logger, nms: NamedMoveStatesHolder): String \/ U = {
     for {
-      c <- db.connection()
+      c <- metaDb.connection()
       r <- {
         c.init(logger) >>
-          action(c, logger, nms)
+          effect(c, logger, nms)
       }.andFinally(c.close(logger))
     } yield r
   }
 
-  def withLock[U](action: (Connection, Logger, NamedMoveStatesHolder) => String \/ U)(c: Connection, logger: Logger, nms: NamedMoveStatesHolder): String \/ U = {
+  def withLock[U](effect: (MetaConnection, Logger, NamedMoveStatesHolder) => String \/ U)(c: MetaConnection, logger: Logger, nms: NamedMoveStatesHolder): String \/ U = {
     for {
       lock <- c.acquireLock(logger)
       r <- {
-        action(c, logger, nms)
+        effect(c, logger, nms)
       }.andFinally(c.releaseLock(logger)(lock))
     } yield r
   }
 
-  def withLockedConnection[U](action: (Connection, Logger, NamedMoveStatesHolder) => String \/ U)(db: Database, logger: Logger, nms: NamedMoveStatesHolder): String \/ U = {
-    withConnection((c, l, s) => {
-      withLock(action)(c, l, s)
-    })(db, logger, nms)
+  def withLockedMetaConnection[U](effect: (MetaConnection, Logger, NamedMoveStatesHolder) => String \/ U)(metaDb: MetaDatabase, logger: Logger, nms: NamedMoveStatesHolder): String \/ U = {
+    withMetaConnection((c, l, s) => {
+      withLock(effect)(c, l, s)
+    })(metaDb, logger, nms)
   }
 
-  def applyMigrationsAndReport(ms: Seq[Migration], imo: Option[(Int, String)], arb: Boolean, runTests: Boolean, user: String, remark: String)(db: Database, logger: Logger, reporters: List[Reporter], nms: NamedMoveStatesHolder): String \/ Unit = {
+  def applyScript(scr: migration.Script, dbId: DatabaseId)(metaDb: MetaDatabase, databases: Map[DatabaseId, Database], logger: Logger): String \/ Unit = {
+    withLockedMetaConnection((c, l, nms) =>
+      MulipleDatabasesHandling.withConnection(dbId, _.applyScript(l)(scr, Up))(databases, l))(metaDb, logger, new NamedMoveStatesHolder)
+  }
 
-    val e = withLockedConnection((c, l, s) => AddHandling.applyMigrations(ms, imo, arb, runTests, user, remark)(c, l, s))(db, logger, nms)
+  def applyMigrationsAndReport(ms: Seq[Migration], imo: Option[(Int, String)], arb: Boolean, runTests: Boolean, user: String, remark: String)(metaDb: MetaDatabase, databases: Map[DatabaseId, Database], logger: Logger, reporters: List[Reporter]): String \/ Unit = {
+    val nms = new NamedMoveStatesHolder
+
+    val e = withLockedMetaConnection((c, l, nms) =>
+      MulipleDatabasesHandling.applyMigrations(ms, imo, arb, runTests, user, remark)(c, databases, l, nms))(metaDb, logger, nms)
 
     (nms.nms.actions.lastOption, e) match {
       case (Some(ms), -\/(f)) => DescribeAction.describe(ms._1, ms._2, f)(logger)

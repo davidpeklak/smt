@@ -4,25 +4,27 @@ import sbt._
 import FileSplitters._
 import DirCrawlers._
 import smt.MigrationHandling
+import smt.db.DatabaseId
 
 object SchemaMigration {
-  def apply(name: String, dir: File): Migration = {
-    apply(name, Seq(dir), Seq(), ClassicDirCrawler, OneFileOneScriptSplitter, identity, identity)
+  def apply(dbId: String, name: String, dir: File): Migration = {
+    apply(dbId, name, Seq(dir), Seq(), ClassicDirCrawler, OneFileOneScriptSplitter, identity, identity)
   }
 
-  def apply(name: String, dirs: Seq[File]): Migration = {
-    apply(name, dirs, Seq(), ClassicDirCrawler, OneFileOneScriptSplitter, identity, identity)
+  def apply(dbId: String, name: String, dirs: Seq[File]): Migration = {
+    apply(dbId, name, dirs, Seq(), ClassicDirCrawler, OneFileOneScriptSplitter, identity, identity)
   }
 
-  def apply(name: String, dir: File, tests: Seq[Test]): Migration = {
-    apply(name, Seq(dir), tests, ClassicDirCrawler, OneFileOneScriptSplitter, identity, identity)
+  def apply(dbId: String, name: String, dir: File, tests: Seq[Test]): Migration = {
+    apply(dbId, name, Seq(dir), tests, ClassicDirCrawler, OneFileOneScriptSplitter, identity, identity)
   }
 
-  def apply(name: String, dirs: Seq[File], tests: Seq[Test]): Migration = {
-    apply(name, dirs, tests, ClassicDirCrawler, OneFileOneScriptSplitter, identity,identity)
+  def apply(dbId: String, name: String, dirs: Seq[File], tests: Seq[Test]): Migration = {
+    apply(dbId, name, dirs, tests, ClassicDirCrawler, OneFileOneScriptSplitter, identity,identity)
   }
 
-  def apply(name: String,
+  def apply(dbId: String,
+            name: String,
             dirs: Seq[File],
             tests: Seq[Test],
             dirCrawler: File => Seq[File], // takes a directory and returns a sequence of subdirectories where the files are expected
@@ -69,42 +71,42 @@ object SchemaMigration {
         group <- upsAndDowns(subdir)
       } yield group
 
-    Migration(name = name, groups = groups, tests = tests)
+    Migration(dbId = DatabaseId(dbId), name = name, groups = groups, tests = tests)
   }
 }
 
 object SepSchemaMigration {
-  def apply(sep: String, name: String, dir: File): Migration = {
-    SchemaMigration(name, Seq(dir), Seq(), ClassicDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity, identity)
+  def apply(sep: String, dbId: String, name: String, dir: File): Migration = {
+    SchemaMigration(dbId, name, Seq(dir), Seq(), ClassicDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity, identity)
   }
 
-  def apply(sep: String, name: String, dirs: Seq[File]): Migration = {
-    SchemaMigration(name, dirs, Seq(), ClassicDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity, identity)
+  def apply(sep: String, dbId: String, name: String, dirs: Seq[File]): Migration = {
+    SchemaMigration(dbId, name, dirs, Seq(), ClassicDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity, identity)
   }
 
-  def apply(sep: String, name: String, dir: File, tests: Seq[Test]): Migration = {
-    SchemaMigration(name, Seq(dir), tests, ClassicDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity, identity)
+  def apply(sep: String, dbId: String, name: String, dir: File, tests: Seq[Test]): Migration = {
+    SchemaMigration(dbId, name, Seq(dir), tests, ClassicDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity, identity)
   }
 
-  def apply(sep: String, name: String, dirs: Seq[File], tests: Seq[Test]): Migration = {
-    SchemaMigration(name, dirs, tests, ClassicDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity, identity)
+  def apply(sep: String, dbId: String, name: String, dirs: Seq[File], tests: Seq[Test]): Migration = {
+    SchemaMigration(dbId, name, dirs, tests, ClassicDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity, identity)
   }
 }
 
 object OneDirSepSchemaMigration {
-  def apply(sep: String, name: String, dir: File): Migration = {
-    SchemaMigration(name, Seq(dir), Seq(), IdentityDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity, identity)
+  def apply(sep: String, dbId: String, name: String, dir: File): Migration = {
+    SchemaMigration(dbId, name, Seq(dir), Seq(), IdentityDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity, identity)
   }
 
-  def apply(sep: String, name: String, dirs: Seq[File]): Migration = {
-    SchemaMigration(name, dirs, Seq(), IdentityDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity, identity)
+  def apply(sep: String, dbId: String, name: String, dirs: Seq[File]): Migration = {
+    SchemaMigration(dbId, name, dirs, Seq(), IdentityDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity, identity)
   }
 
-  def apply(sep: String, name: String, dir: File, tests: Seq[Test]): Migration = {
-    SchemaMigration(name, Seq(dir), tests, IdentityDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity, identity)
+  def apply(sep: String, dbId: String, name: String, dir: File, tests: Seq[Test]): Migration = {
+    SchemaMigration(dbId, name, Seq(dir), tests, IdentityDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity, identity)
   }
 
-  def apply(sep: String, name: String, dirs: Seq[File], tests: Seq[Test]): Migration = {
-    SchemaMigration(name, dirs, tests, IdentityDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity, identity)
+  def apply(sep: String, dbId: String, name: String, dirs: Seq[File], tests: Seq[Test]): Migration = {
+    SchemaMigration(dbId, name, dirs, tests, IdentityDirCrawler, OneFileManyScriptsSplitter("\n" + sep), identity, identity)
   }
 }
