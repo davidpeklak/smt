@@ -55,7 +55,7 @@ object SchemaMigration {
         case (upFile, downFile) => Group(ups = fileSplitter(upFile), downs = fileSplitter(downFile).reverse)
       }
 
-      groups.map(MigrationHandling.transformGroup(Seq(downTransformation), Seq(upTransformation)))
+      groups.par.map(MigrationHandling.transformGroup(Seq(downTransformation), Seq(upTransformation))).seq
     }
 
     def listFilesAlphabetically(dir: File): Seq[File] = {

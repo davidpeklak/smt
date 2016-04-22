@@ -13,9 +13,9 @@ object MigrationHandling {
     group.copy(ups = transformScripts(upTs)(group.ups), downs = transformScripts(downTs)(group.downs))
   }
 
-  def transformScripts(ts: Seq[Transformation])(ss: Seq[Script]): Seq[Script] = ss.map(s => {
+  def transformScripts(ts: Seq[Transformation])(ss: Seq[Script]): Seq[Script] = ss.par.map(s => {
     ts.foldLeft(s)((s, t) => s.copy(content = t(s.content)))
-  })
+  }).seq
 
   def transformedMigrationsImpl(ms: Seq[Migration], downTs: Seq[Transformation], upTs: Seq[Transformation]): Seq[Migration] = {
     ms.map(m => m.copy(groups =  m.groups.map(transformGroup(downTs, upTs))))
