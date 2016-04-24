@@ -1,9 +1,13 @@
 package smt
 
 import org.scalacheck.Gen
+import org.scalacheck.Gen._
 import scala.annotation.tailrec
 
 object GenUtil {
+
+  /* Generates a non-empty string of alpha characters */
+  def alphaStr1: Gen[String] = for(cs <- listOf1(Gen.alphaChar)) yield cs.mkString
 
   def listOfDistinctN[T](n: Int, g: Gen[T], eq: (T, T) => Boolean): Gen[List[T]] = {
     type GL = Gen[List[T]]

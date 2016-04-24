@@ -10,7 +10,7 @@ object MigrationGen {
   def migGen(databases: Map[DatabaseId, Database]): Gen[Migration] = {
     for {
       dbId <- oneOf(databases.keys.toList)
-      name <- alphaStr
+      name <- alphaStr1
       numberOfGroups <- choose(1, 10)
       groups <- listOfN(numberOfGroups, groupGen)
     } yield Migration(dbId, name, groups, Seq())
@@ -27,7 +27,7 @@ object MigrationGen {
 
   def scriptGen: Gen[Script] = {
     for {
-      name <- alphaStr
+      name <- alphaStr1
       length <- choose(20, 100)
       content <- listOfN(length, alphaChar).map(_.mkString(""))
     } yield Script(name, content)

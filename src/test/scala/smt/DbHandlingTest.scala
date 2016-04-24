@@ -143,8 +143,6 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     SingleConnectionHandling.revertMigration(MigrationInfoWithDowns(migInfo, downs), "user", "remark")(metaConn, conn, logger, new DownMoveStateHolder())
 
-
-
     assert(conn.downScriptSeq === Seq(good(4), good(3), bad))
     assert(metaConn.downss.size === 1)
     assert(metaConn.downss(0)._2 === Seq(good(1), good(2)))
