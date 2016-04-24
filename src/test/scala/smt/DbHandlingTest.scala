@@ -78,7 +78,7 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     MulipleDatabasesHandling.applyMigrations(ms = Seq(mig), imo = None, arb = false, runTests = true, user = "user", remark = "remark")(new MetaConnectionMock, databases, logger, new NamedMoveStatesHolder())
 
-    assert(conn.testScriptSeq.size === 1)
+    assert(conn.testScriptSeq.size === 1, s"Failed for migration: $mig")
     assert(conn.testScriptSeq(0) === testScript)
   }
 

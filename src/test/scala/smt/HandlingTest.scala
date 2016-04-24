@@ -2,6 +2,7 @@ package smt
 
 import org.scalatest.FunSuite
 import smt.MigrationGen._
+import smt.DatabaseGen._
 import org.scalacheck.Gen
 import smt.db.{Connection, DatabaseId}
 import smt.report.Reporter
@@ -68,7 +69,7 @@ class HandlingTest extends FunSuite {
     }
   }
 
-  class CheckCloseDatabaseMock(conn: CheckCloseConnectionMock) extends DatabaseMock(conn) {
+  class CheckCloseDatabaseMock(val conn: CheckCloseConnectionMock) extends DatabaseMock(conn) {
     override def connection(): \/[String, Connection] = {
       conn.open()
       super.connection()
@@ -102,6 +103,37 @@ class HandlingTest extends FunSuite {
     assert(connection.closed === true)
     assert(connection.closedTwice === false)
     assert(connection.openedTwice === false)
+
+    assert(metaConnection.closed === true)
+  }
+
+  test("apply many migrations to 10 connections - verify connections are closed") {
+    val connection = new CheckCloseConnectionMock
+
+    val dbIds = dbIdGen(10).apply(Gen.Params()).get // bochn
+
+    def createDatabase(): CheckCloseDatabaseMock = {
+      val conn = new CheckCloseConnectionMock
+      new CheckCloseDatabaseMock(conn)
+    }
+
+    val databases: Map[DatabaseId, CheckCloseDatabaseMock] = dbIds.map(dbId => dbId -> createDatabase()).toMap
+
+    val migs = listOfDistinctMig(databases)(100).apply(Gen.Params()).get // bochn
+
+    val logger = new LoggerMock
+
+    val metaConnection = new CheckCloseMetaConnectionMock
+
+    val metaDb = new MetaDatabaseMock(metaConnection)
+
+    Handling.applyMigrationsAndReport(ms = migs, imo = None, arb = false, runTests = true, "user", "remark")(metaDb, databases, logger, List())
+
+    for (conn <- databases.values.toList.map(_.conn)) {
+      assert(connection.closed === true)
+      assert(connection.closedTwice === false)
+      assert(connection.openedTwice === false)
+    }
 
     assert(metaConnection.closed === true)
   }
