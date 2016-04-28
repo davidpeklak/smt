@@ -70,7 +70,7 @@ trait CommonSqlConnection {
   def close(logger: Logger)(): \/[String, Unit] = fromTryCatch(cnx.close())
 }
 
-abstract class SqlConnection(val cnx: JConnection) extends Connection with CommonSqlConnection
+class SqlConnection(val cnx: JConnection) extends Connection with CommonSqlConnection
 
 abstract class SqlMetaConnection(val cnx: JConnection,
                              tableSchema: Option[String],
@@ -136,28 +136,12 @@ abstract class SqlMetaConnection(val cnx: JConnection,
 
   def queryTableExistsString(table: String): String
 
-  def queryMigrationTableHasColumnString(column: String): String
-
   def doesMigrationTableExist(): Boolean = isResultSizeOne(queryTableExistsString(migrationTableName))
-
-  def doesMigrationTableHaveUserColumn(): Boolean = isResultSizeOne(queryMigrationTableHasColumnString(USER))
-
-  def doesMigrationTableHaveRemarkColumn(): Boolean = isResultSizeOne(queryMigrationTableHasColumnString(REMARK))
-
-  def alterMigrationTableAddColumnString(column: String) = "ALTER TABLE " + MIGRATION + " ADD ( " + column + ")"
-
-  def alterMigrationTableAddUserColumn() = withStatement(cnx)(_.execute(alterMigrationTableAddColumnString(USER + " VARCHAR(100)")))
-
-  def alterMigrationTableAddRemarkColumn() = withStatement(cnx)(_.execute(alterMigrationTableAddColumnString(REMARK + " VARCHAR(256)")))
 
   def doesDownTableExist(): Boolean = isResultSizeOne(queryTableExistsString(downTableName))
 
   def init(logger: Logger)(): String \/ Unit = fromTryCatch {
-    if (doesMigrationTableExist()) {
-      if (!doesMigrationTableHaveUserColumn()) alterMigrationTableAddUserColumn()
-      if (!doesMigrationTableHaveRemarkColumn()) alterMigrationTableAddRemarkColumn()
-    }
-    else createMigrationTable()
+    if (!doesMigrationTableExist()) createMigrationTable()
 
     if (!doesDownTableExist()) createDownTable()
   }

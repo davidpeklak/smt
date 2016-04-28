@@ -49,7 +49,7 @@ object MigrationHandling {
 
   case class Common(db: MigrationInfo, currentName: String) {
     override def toString: String = {
-      val seq = Seq(Some(currentName + " (on db: " + db.name), Some(bytesToHex(db.hash)), Some(db.dateTime.toString), db.user, db.remark).flatten
+      val seq = Seq(Some(db.dbId.id), Some(currentName + " (on db: " + db.name + ")"), Some(bytesToHex(db.hash)), Some(db.dateTime.toString), db.user, db.remark).flatten
       "CommonMigrationInfo(" + seq.mkString(", ") + ")"
     }
   }
