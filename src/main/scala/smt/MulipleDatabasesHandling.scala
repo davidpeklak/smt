@@ -55,8 +55,13 @@ object MulipleDatabasesHandling {
     for {
       mis <- metaConnection.state(logger)
       lcho = MigrationHandling.latestCommon2(mis, mhs).map(_.db.hash)
-      _ <- revertToLatestCommon(lcho, arb, user, remark)(metaConnection, databases, logger, nms)
-      _ <- doApplyMigrations(mhs, lcho, runTests, user, remark)(metaConnection, databases, logger, nms)
+      _ <- {
+        if (lcho.isDefined || imo.isEmpty) for {
+          _ <- revertToLatestCommon(lcho, arb, user, remark)(metaConnection, databases, logger, nms)
+          _ <- doApplyMigrations(mhs, lcho, runTests, user, remark)(metaConnection, databases, logger, nms)
+        } yield ()
+        else -\/("Will not roll back migrations, because an initialMigration is set, and there are no common migrations.")
+      }
     } yield ()
   }
 
