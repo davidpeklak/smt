@@ -2,7 +2,7 @@ package smt.db
 
 import java.util.Date
 
-import sbt.Logger
+import smt.util.Logger
 import smt.migration.{MigrationInfo, Direction, Script}
 
 import scalaz.\/

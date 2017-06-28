@@ -1,8 +1,7 @@
 package smt
 
-import sbt.Keys._
 import java.security.MessageDigest
-import smt.util.Util
+import smt.util.{Util, Logger}
 import Util._
 import smt.migration._
 
@@ -21,10 +20,10 @@ object MigrationHandling {
     ms.map(m => m.copy(groups = m.groups.map(transformGroup(downTs, upTs))))
   }
 
-  def showHashesImpl(ms: Seq[Migration], imo: Option[(Int, String)], s: TaskStreams): Unit = {
+  def showHashesImpl(ms: Seq[Migration], imo: Option[(Int, String)], l: Logger): Unit = {
     hashMigrations(ms, imo).migs.foreach { case (migration, hash) =>
       import migration._
-      s.log.info(s"${dbId.toString}: $name: ${bytesToHex(hash)}")
+      l.info(s"${dbId.toString}: $name: ${bytesToHex(hash)}")
     }
   }
 

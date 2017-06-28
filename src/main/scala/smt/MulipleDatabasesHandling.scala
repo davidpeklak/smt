@@ -1,6 +1,6 @@
 package smt
 
-import sbt.Logger
+import smt.util.Logger
 import smt.db.{MetaConnection, Database, DatabaseId, Connection}
 import smt.migration._
 import smt.util.EitherHaerte.EitherSyntax._

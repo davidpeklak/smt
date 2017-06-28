@@ -1,9 +1,7 @@
 package smt.migration
 
 import java.io.File
-import sbt._
-import scala.Some
-import scala.Some
+import smt.util.FileUtil._
 
 /**
  * Assumes the following directory structure:
@@ -55,7 +53,7 @@ object DirCrawlers {
 
   private def checkDirectory(file: File): Option[File] = {
     if (file.exists()) {
-      IO.assertDirectory(file)
+      assert(file.isDirectory, s"$file is not a directory")
       Some(file)
     }
     else None

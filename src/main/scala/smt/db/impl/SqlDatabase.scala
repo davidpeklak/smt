@@ -10,7 +10,7 @@ import smt.db.{DatabaseId, MetaConnection, Connection, Database}
 import smt.migration.{Script, MigrationInfo, Direction}
 import scalaz.{-\/, \/-, \/}
 import scala.collection.immutable.Stream.Empty
-import sbt.Logger
+import smt.util.Logger
 
 object SqlDatabase {
   def fromTryCatch[A](block: => A): String \/ A = {

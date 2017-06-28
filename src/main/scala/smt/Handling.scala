@@ -4,7 +4,7 @@ import smt.db._
 import smt.report.{ReportersAction, Reporter}
 import scalaz.Scalaz._
 import smt.describe.DescribeAction
-import sbt.Logger
+import smt.util.Logger
 import scalaz.{\/, -\/}
 import smt.migration.{HashedMigrationSeq, MigrationInfo, Migration, Up}
 import smt.util.EitherHaerte.EitherSyntax._

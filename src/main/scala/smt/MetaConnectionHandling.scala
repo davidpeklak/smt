@@ -4,7 +4,7 @@ import java.util.Date
 import smt.db._
 import smt.migration._
 import smt.MigrationHandling._
-import sbt.Logger
+import smt.util.Logger
 import smt.util.SeqHaerte.SeqSyntax._
 import smt.util.EitherHaerte.EitherSyntax._
 import scalaz.\/

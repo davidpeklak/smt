@@ -5,7 +5,7 @@ import Util._
 import smt.db.{Connection, Database}
 import smt.migration.{Script, MigrationInfo, Direction}
 import scalaz.{\/-, \/}
-import sbt.Logger
+import smt.util.Logger
 
 class TestDatabase extends Database {
   def connection(): \/[String, Connection] = {

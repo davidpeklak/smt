@@ -1,6 +1,6 @@
 package smt
 
-import sbt.Logger
+import smt.util.Logger
 import smt.DownMoveState._
 import smt.db.{MetaConnection, Connection}
 import smt.migration._

@@ -10,7 +10,6 @@ lazy val commonSettings = Seq(
 lazy val root = (project in file(".")).
   settings(commonSettings ++ bintrayPublishSettings: _*).
   settings(
-    sbtPlugin := true,
     name := "smt",
     description := "scala database migration tool",
     licenses += ("MIT", url("http://opensource.org/licenses/MIT")),

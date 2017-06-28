@@ -1,7 +1,7 @@
 package smt.describe
 
 import smt.{UpMoveState, DownMoveState, MoveState}
-import sbt.Logger
+import smt.util.Logger
 
 object DescribeAction {
   def describe(f: String)(logger: Logger): Unit = {

@@ -3,7 +3,7 @@ package smt.db.impl
 import java.sql.{Connection => JConnection, _}
 import scala.util.control.Exception._
 import scala.collection.Map._
-import sbt.Logger
+import smt.util.Logger
 
 
 class OracleMetaConnection(connection: JConnection,

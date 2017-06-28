@@ -2,7 +2,7 @@ package smt.db.impl
 
 import java.sql.{Connection => JConnection, _}
 import scala.util.control.Exception._
-import sbt.Logger
+import smt.util.Logger
 import SqlConnection._
 
 class H2MetaConnection(connection: JConnection,

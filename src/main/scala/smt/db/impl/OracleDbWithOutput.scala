@@ -3,7 +3,7 @@ package smt.db.impl
 import java.sql.{Connection => JConnection}
 import smt.db.Database
 import smt.migration.{Script, Direction}
-import sbt.Logger
+import smt.util.Logger
 import scalaz.\/
 
 

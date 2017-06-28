@@ -4,7 +4,7 @@ import java.io.File
 import smt.db.Connection
 import FileSplitters._
 import scalaz.\/
-import sbt.Logger
+import smt.util.Logger
 
 case class Test (run: Connection => Logger => String \/ Unit)
 

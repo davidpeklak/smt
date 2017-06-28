@@ -1,13 +1,14 @@
 package smt.migration
 
-import sbt._
+import java.io.File
 import scala.annotation.tailrec
 import smt.util.Util._
+import smt.util.FileUtil._
 
 object FileSplitters {
 
   def OneFileOneScriptSplitter(file: File): Seq[Script] = {
-    Seq(Script(name = file.getName, content = bytesToString(IO.readBytes(file))))
+    Seq(Script(name = file.getName, content = bytesToString(readBytes(file))))
   }
 
   def splitString(sep: String)(content: String): Seq[String] = {
@@ -30,7 +31,7 @@ object FileSplitters {
   }
 
   def OneFileManyScriptsSplitter(sep: String)(file: File): Seq[Script] = {
-    val content = bytesToString(IO.readBytes(file))
+    val content = bytesToString(readBytes(file))
     val scriptContents = splitString(sep)(content)
     scriptContents match {
       case Seq(oneScript) => Seq(Script(name = file.getName, content = oneScript))

@@ -1,10 +1,12 @@
 package smt.migration
 
-import sbt._
+import java.io.File
+
 import FileSplitters._
 import DirCrawlers._
 import smt.MigrationHandling
 import smt.db.DatabaseId
+import smt.util.FileUtil._
 
 object SchemaMigration {
   def apply(dbId: String, name: String, dir: File): Migration = {
@@ -32,16 +34,18 @@ object SchemaMigration {
             downTransformation: String => String, // a specific transformation of down scripts for this migration
             upTransformation: String => String // a specific transformation of up scripts for this migration
              ): Migration = {
-    IO.assertDirectories(dirs: _*)
+    for {dir <- dirs} {
+       assert(dir.isDirectory, s"$dir is not a directory")
+    }
 
     def upsAndDowns(dir: File): Seq[Group] = {
       val up = dir / "up"
-      IO.assertDirectory(up)
+      assert(up.isDirectory, s"$up is not a directory")
       val upFiles = listFilesAlphabetically(up)
       val upFileNames = upFiles.map(_.getName)
 
       val down = dir / "down"
-      IO.assertDirectory(down)
+      assert(down.isDirectory, s"$down is not a directory")
       val downFiles = listFilesAlphabetically(down)
       val downFileNames = downFiles.map(_.getName)
 
