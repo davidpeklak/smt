@@ -3,7 +3,7 @@ package smt
 import smt.db.Connection
 import smt.migration.{Direction, Script, MigrationInfo}
 import scalaz.{\/-, \/}
-import sbt.{Level, Logger}
+import smt.util.Logger
 
 class ConnectionMock extends Connection {
 

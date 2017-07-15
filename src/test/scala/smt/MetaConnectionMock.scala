@@ -1,9 +1,10 @@
 package smt
 
 import smt.db.MetaConnection
-import smt.migration.{Direction, Script, MigrationInfo}
-import scalaz.{\/-, \/}
-import sbt.{Level, Logger}
+import smt.migration.{Direction, MigrationInfo, Script}
+import smt.util.Logger
+
+import scalaz.{\/, \/-}
 
 class MetaConnectionMock extends MetaConnection {
 

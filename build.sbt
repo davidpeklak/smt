@@ -1,6 +1,6 @@
 import bintray.Keys._
 
-scalaVersion := "2.10.6"
+scalaVersion := "2.12.2"
 
 lazy val commonSettings = Seq(
   version in ThisBuild := "0.6.1",
@@ -10,8 +10,8 @@ lazy val commonSettings = Seq(
 lazy val root = (project in file(".")).
   settings(commonSettings ++ bintrayPublishSettings: _*).
   settings(
-    name := "smt",
-    description := "scala database migration tool",
+    name := "smt-lib",
+    description := "scala database migration library",
     licenses += ("MIT", url("http://opensource.org/licenses/MIT")),
     publishMavenStyle := false,
     repository in bintray := "sbt-plugins",
@@ -20,9 +20,8 @@ lazy val root = (project in file(".")).
 
 
 libraryDependencies ++= Seq(
-  "com.h2database" % "h2" % "1.3.172",
-  "org.scalaz" %% "scalaz-core" % "7.2.1",
-  "javax.mail" % "mail" % "1.4.7",
-  "org.scalacheck" %% "scalacheck" % "1.10.1" % "test",
-  "org.scalatest" %% "scalatest" % "2.2.6" % "test"
+  "com.h2database" % "h2" % "1.3.172" % "test",
+  "org.scalaz" %% "scalaz-core" % "7.2.14",
+  "org.scalacheck" %% "scalacheck" % "1.13.4" % "test",
+  "org.scalatest" %% "scalatest" % "3.0.1" % "test"
 )

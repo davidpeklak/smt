@@ -8,7 +8,7 @@ import smt.db.DatabaseId
 object DatabaseGen {
 
   def dbIdGen(n: Int): Gen[List[DatabaseId]] = {
-    listOfDistinctN[DatabaseId](n, alphaStr1.map(DatabaseId), _ == _)
+    listOfDistinctN[DatabaseId](n, nonEmptyAlphaStr.map(DatabaseId), _ == _)
   }
 
 }

@@ -2,12 +2,17 @@ package smt
 
 import org.scalacheck.Gen
 import org.scalacheck.Gen._
+import org.scalacheck.rng.Seed
+
 import scala.annotation.tailrec
 
 object GenUtil {
 
+  def params(): Parameters = Parameters.default
+  def seed(): Seed = Seed.random()
+
   /* Generates a non-empty string of alpha characters */
-  def alphaStr1: Gen[String] = for(cs <- listOf1(Gen.alphaChar)) yield cs.mkString
+  def nonEmptyAlphaStr: Gen[String] = nonEmptyListOf(alphaChar).map(_.mkString)
 
   def listOfDistinctN[T](n: Int, g: Gen[T], eq: (T, T) => Boolean): Gen[List[T]] = {
     type GL = Gen[List[T]]

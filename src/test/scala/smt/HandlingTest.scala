@@ -6,8 +6,11 @@ import smt.DatabaseGen._
 import org.scalacheck.Gen
 import smt.db.{Connection, DatabaseId}
 import smt.report.Reporter
-import scalaz.{\/-, \/}
-import sbt.{Level, Logger}
+import smt.util.Logger
+import GenUtil.{params, seed}
+import smt.migration.{Direction, Script}
+
+import scalaz.{\/, \/-}
 
 class HandlingTest extends FunSuite {
 
@@ -20,18 +23,18 @@ class HandlingTest extends FunSuite {
   }
 
   class LoggerMock extends Logger {
-    def trace(t: => Throwable): Unit = ()
+    override def info(s: =>String): Unit = {}
 
-    def log(level: Level.Value, message: => String): Unit = ()
+    override def warn(s: =>String): Unit = {}
 
-    def success(message: => String): Unit = ()
+    override def error(s: => String): Unit = {}
   }
 
   test("apply one migration - verify reporter is called") {
 
     val databases = Map(DatabaseId("KAKTUS") -> new DatabaseMock(new ConnectionMock))
 
-    val mig = migGen(databases).apply(Gen.Params()).get // bochn
+    val mig = migGen(databases).apply(params, seed()).get // bochn
 
     val reporter = new ReporterMock
 
@@ -63,6 +66,11 @@ class HandlingTest extends FunSuite {
 
   class CheckCloseConnectionMock extends ConnectionMock with CloseChecking {
 
+
+    override def applyScript(logger: Logger)(script: Script, direction: Direction): \/[String, Unit] = \/-(())
+
+    override def testScript(logger: Logger)(script: Script): \/[String, Unit] = \/-(())
+
     override def close(logger: Logger)(): \/[String, Unit] = {
       doClose()
       super.close(logger)()
@@ -90,7 +98,7 @@ class HandlingTest extends FunSuite {
 
     val databases = Map(DatabaseId("KAKTUS") -> new CheckCloseDatabaseMock(connection))
 
-    val mig = migGen(databases).apply(Gen.Params()).get // bochn
+    val mig = migGen(databases).apply(params, seed()).get // bochn
 
     val logger = new LoggerMock
 
@@ -110,7 +118,7 @@ class HandlingTest extends FunSuite {
   test("apply many migrations to 10 connections - verify connections are closed") {
     val connection = new CheckCloseConnectionMock
 
-    val dbIds = dbIdGen(10).apply(Gen.Params()).get // bochn
+    val dbIds = dbIdGen(10).apply(params, seed()).get // bochn
 
     def createDatabase(): CheckCloseDatabaseMock = {
       val conn = new CheckCloseConnectionMock
@@ -119,7 +127,7 @@ class HandlingTest extends FunSuite {
 
     val databases: Map[DatabaseId, CheckCloseDatabaseMock] = dbIds.map(dbId => dbId -> createDatabase()).toMap
 
-    val migs = listOfDistinctMig(databases)(100).apply(Gen.Params()).get // bochn
+    val migs = listOfDistinctMig(databases)(100).apply(params, seed()).get // bochn
 
     val logger = new LoggerMock
 

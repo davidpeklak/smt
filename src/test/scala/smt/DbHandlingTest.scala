@@ -11,23 +11,24 @@ import scalaz.{\/-, \/, -\/}
 import smt.migration.Test
 import smt.migration.Migration
 import smt.db.{DatabaseId, Connection}
-import sbt.{Logger, Level}
+import smt.util.Logger
+import smt.GenUtil.{params, seed}
 
 class DbHandlingTest extends FunSuite with PropTesting {
 
   lazy val logger: Logger = new Logger {
-    def log(level: Level.Value, message: => String): Unit = {}
+    def info(s: =>String): Unit = {}
 
-    def success(message: => String): Unit = {}
+    def warn(s: =>String): Unit = {}
 
-    def trace(t: => Throwable): Unit = {}
+    override def error(s: => String): Unit = {}
   }
 
   test("apply one migration - smoke") {
 
     val databases = Map(DatabaseId("KAKTUS") -> new DatabaseMock(new ConnectionMock))
 
-    val mig = migGen(databases).apply(Gen.Params()).get // bochn
+    val mig = migGen(databases).apply(params, seed()).get // bochn
 
     MulipleDatabasesHandling.applyMigrations(ms = Seq(mig), imo = None, arb = false, runTests = true, user = "user", remark = "remark")(new MetaConnectionMock, databases, logger, new NamedMoveStatesHolder())
   }
@@ -36,7 +37,7 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val databases = Map(DatabaseId("KAKTUS") -> new DatabaseMock(new ConnectionMock))
 
-    val mig = migGen(databases).apply(Gen.Params()).get // bochn
+    val mig = migGen(databases).apply(params, seed()).get // bochn
 
     val metaConn = new MetaConnectionMock
 
@@ -74,7 +75,7 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val databases = Map(DatabaseId("KAKTUS") -> new DatabaseMock(conn))
 
-    val mig = migGen(databases).map(_.copy(tests = Seq(test))).apply(Gen.Params()).get // bochn
+    val mig = migGen(databases).map(_.copy(tests = Seq(test))).apply(params, seed()).get // bochn
 
     MulipleDatabasesHandling.applyMigrations(ms = Seq(mig), imo = None, arb = false, runTests = true, user = "user", remark = "remark")(new MetaConnectionMock, databases, logger, new NamedMoveStatesHolder())
 
@@ -91,7 +92,7 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val databases = Map(DatabaseId("KAKTUS") -> new DatabaseMock(conn))
 
-    val mig = migGen(databases).map(_.copy(tests = Seq(test))).apply(Gen.Params()).get // bochn
+    val mig = migGen(databases).map(_.copy(tests = Seq(test))).apply(params, seed()).get // bochn
 
     MulipleDatabasesHandling.applyMigrations(ms = Seq(mig), imo = None, arb = false, runTests = false, user = "user", remark = "remark")(new MetaConnectionMock, databases, logger, new NamedMoveStatesHolder())
 
