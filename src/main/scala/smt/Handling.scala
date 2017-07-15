@@ -7,7 +7,7 @@ import smt.describe.DescribeAction
 import smt.util.Logger
 import scalaz.{\/, -\/}
 import smt.migration.{HashedMigrationSeq, MigrationInfo, Migration, Up}
-import smt.util.EitherHaerte.EitherSyntax._
+import smt.util.EitherSyntax._
 
 /**
   * uses functions of MetaConnectionHandling,

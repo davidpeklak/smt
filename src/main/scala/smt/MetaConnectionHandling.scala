@@ -5,8 +5,8 @@ import smt.db._
 import smt.migration._
 import smt.MigrationHandling._
 import smt.util.Logger
-import smt.util.SeqHaerte.SeqSyntax._
-import smt.util.EitherHaerte.EitherSyntax._
+import smt.util.SeqSyntax._
+import smt.util.EitherSyntax._
 import scalaz.\/
 import scalaz.Scalaz._
 

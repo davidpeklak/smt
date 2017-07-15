@@ -4,12 +4,13 @@ import scala.annotation.tailrec
 import scalaz.{\/, -\/, \/-}
 import scalaz.syntax.Ops
 
-object SeqHaerte {
 
-  trait SeqOps[B] extends Ops[Seq[B]] {
+object SeqSyntax {
+
+  implicit class SeqOps[B](val self: Seq[B]) extends Ops[Seq[B]] {
     def travE[C](f: B => String \/ C): String \/ List[C] = {
       @tailrec
-      def go(l: List[B], acc: List[C]): String \/ List [C] = l match {
+      def go(l: List[B], acc: List[C]): String \/ List[C] = l match {
         case h :: t => f(h) match {
           case -\/(err) => -\/(err)
           case \/-(c) => go(t, c :: acc)
@@ -34,9 +35,4 @@ object SeqHaerte {
     }
   }
 
-  object SeqSyntax {
-    implicit def toSeqOps[B](l: Seq[B]): SeqOps[B] = new SeqOps[B] {
-      val self = l
-    }
-  }
 }

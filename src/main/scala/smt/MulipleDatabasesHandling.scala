@@ -3,8 +3,8 @@ package smt
 import smt.util.Logger
 import smt.db.{MetaConnection, Database, DatabaseId, Connection}
 import smt.migration._
-import smt.util.EitherHaerte.EitherSyntax._
-import smt.util.SeqHaerte.SeqSyntax._
+import smt.util.EitherSyntax._
+import smt.util.SeqSyntax._
 
 import scalaz.{-\/, \/}
 import scalaz.Scalaz._

@@ -4,8 +4,8 @@ import smt.util.Logger
 import smt.DownMoveState._
 import smt.db.{MetaConnection, Connection}
 import smt.migration._
-import smt.util.SeqHaerte.SeqSyntax._
-import smt.util.EitherHaerte.EitherSyntax._
+import smt.util.SeqSyntax._
+import smt.util.EitherSyntax._
 import scalaz.Scalaz._
 
 import scalaz.{\/-, -\/, \/}
