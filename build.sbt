@@ -13,8 +13,8 @@ lazy val root = (project in file(".")).
     name := "smt-lib",
     description := "scala database migration library",
     licenses += ("MIT", url("http://opensource.org/licenses/MIT")),
-    publishMavenStyle := false,
-    repository in bintray := "sbt-plugins",
+    publishMavenStyle := true,
+    repository in bintray := "maven",
     bintrayOrganization in bintray := None
   )
 
