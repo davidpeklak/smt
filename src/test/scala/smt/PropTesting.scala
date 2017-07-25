@@ -1,15 +1,16 @@
 package smt
 
-import org.scalacheck.{Test => ScTest, Prop}
-import org.scalacheck.Test.{Passed, Parameters}
+import org.scalacheck.{Prop, Test => ScTest}
+import org.scalacheck.Test.{Parameters, Passed}
 import org.scalatest.FunSuite
+
+import scalaz.{-\/, \/, \/-}
 
 trait PropTesting {
   this: FunSuite =>
 
-  def check(p: Prop) {
-    val r = ScTest.check(Parameters.default, p)
-
-    assert(r.status === Passed)
+  implicit def eitherProp(e: String \/ Unit): Prop = e match {
+    case -\/(_) => Prop.falsified
+    case \/-(()) => Prop.proved
   }
 }

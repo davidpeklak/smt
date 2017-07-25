@@ -4,7 +4,7 @@ import org.scalacheck.Gen
 import org.scalacheck.Gen._
 import GenUtil._
 import smt.db.{Database, DatabaseId}
-import smt.migration.{Script, Migration, Group}
+import smt.migration.{Group, Migration, Script}
 
 object MigrationGen {
   def migGen(databases: Map[DatabaseId, Database]): Gen[Migration] = {
@@ -25,11 +25,16 @@ object MigrationGen {
     } yield Group(ups, downs)
   }
 
+  // create a string that does not contain the substring "bad"
+  def nonBadString[T](length: Int): Gen[String] = {
+    listOfN(length, alphaChar).map(_.mkString("")).waitFor(!_.contains("bad"))
+  }
+
   def scriptGen: Gen[Script] = {
     for {
       name <- nonEmptyAlphaStr
       length <- choose(20, 100)
-      content <- listOfN(length, alphaChar).map(_.mkString(""))
+      content <- nonBadString(length)
     } yield Script(name, content)
   }
 

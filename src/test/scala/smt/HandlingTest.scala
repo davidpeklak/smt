@@ -3,13 +3,16 @@ package smt
 import org.scalatest.FunSuite
 import smt.MigrationGen._
 import smt.DatabaseGen._
-import org.scalacheck.Gen
+import org.scalacheck.{Gen, Prop}
 import smt.db.{Connection, DatabaseId}
 import smt.report.Reporter
 import smt.util.Logger
 import GenUtil.{params, seed}
 import smt.migration.{Direction, Script}
+import org.scalacheck.Prop.forAll
+import org.scalatest.prop.Checkers._
 
+import scala.collection.immutable
 import scalaz.{\/, \/-}
 
 class HandlingTest extends FunSuite {
@@ -23,9 +26,9 @@ class HandlingTest extends FunSuite {
   }
 
   class LoggerMock extends Logger {
-    override def info(s: =>String): Unit = {}
+    override def info(s: => String): Unit = {}
 
-    override def warn(s: =>String): Unit = {}
+    override def warn(s: => String): Unit = {}
 
     override def error(s: => String): Unit = {}
   }
@@ -116,33 +119,38 @@ class HandlingTest extends FunSuite {
   }
 
   test("apply many migrations to 10 connections - verify connections are closed") {
-    val connection = new CheckCloseConnectionMock
-
-    val dbIds = dbIdGen(10).apply(params, seed()).get // bochn
 
     def createDatabase(): CheckCloseDatabaseMock = {
       val conn = new CheckCloseConnectionMock
       new CheckCloseDatabaseMock(conn)
     }
 
-    val databases: Map[DatabaseId, CheckCloseDatabaseMock] = dbIds.map(dbId => dbId -> createDatabase()).toMap
+    val gen = for {
+      dbIds <- dbIdGen(10)
+      databases: Map[DatabaseId, CheckCloseDatabaseMock] = dbIds.map(dbId => dbId -> createDatabase()).toMap
+      migs <- listOfDistinctMig(databases)(100)
+    } yield (databases, migs)
 
-    val migs = listOfDistinctMig(databases)(100).apply(params, seed()).get // bochn
+    check(forAll(gen) { case (databases, migs) => {
+      val logger = new LoggerMock
 
-    val logger = new LoggerMock
+      val metaConnection = new CheckCloseMetaConnectionMock
 
-    val metaConnection = new CheckCloseMetaConnectionMock
+      val metaDb = new MetaDatabaseMock(metaConnection)
 
-    val metaDb = new MetaDatabaseMock(metaConnection)
+      Handling.applyMigrationsAndReport(ms = migs, imo = None, arb = false, runTests = true, "user", "remark")(metaDb, databases, logger, List())
 
-    Handling.applyMigrationsAndReport(ms = migs, imo = None, arb = false, runTests = true, "user", "remark")(metaDb, databases, logger, List())
+      val connectionAssertions = for ((name, db) <- databases.toList) yield {
+        Prop(db.conn.closed == true) :| s"connecion of $name closed" &&
+          Prop(db.conn.closedTwice == false) :| s"connecion of $name not closed twice" &&
+          Prop(db.conn.openedTwice === false) :| s"connecion of $name not opened twice"
+      }
 
-    for (conn <- databases.values.toList.map(_.conn)) {
-      assert(connection.closed === true)
-      assert(connection.closedTwice === false)
-      assert(connection.openedTwice === false)
+      Prop(metaConnection.closed == true) :| "metaconnection closed" && connectionAssertions.fold(Prop.proved)(_ && _)
+
     }
+    })
 
-    assert(metaConnection.closed === true)
+
   }
 }

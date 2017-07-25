@@ -2,19 +2,24 @@ package smt
 
 import org.scalatest.FunSuite
 import MigrationGen._
-import org.scalacheck.Gen
+import org.scalacheck.{Gen, Prop}
 import java.util.Date
+
 import smt.MetaConnectionHandling.MigrationInfoWithDowns
 import smt.migration._
 import smt.migration.Group
-import scalaz.{\/-, \/, -\/}
+
+import scalaz.{-\/, \/, \/-}
 import smt.migration.Test
 import smt.migration.Migration
-import smt.db.{DatabaseId, Connection}
+import smt.db.{Connection, DatabaseId}
 import smt.util.Logger
-import smt.GenUtil.{params, seed}
+import smt.GenUtil._
+import org.scalacheck.Prop.forAll
+import org.scalacheck.util.Pretty.Params
+import org.scalatest.prop.Checkers
 
-class DbHandlingTest extends FunSuite with PropTesting {
+class DbHandlingTest extends FunSuite with Checkers with PropTesting {
 
   lazy val logger: Logger = new Logger {
     def info(s: =>String): Unit = {}
@@ -28,22 +33,23 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val databases = Map(DatabaseId("KAKTUS") -> new DatabaseMock(new ConnectionMock))
 
-    val mig = migGen(databases).apply(params, seed()).get // bochn
-
-    MulipleDatabasesHandling.applyMigrations(ms = Seq(mig), imo = None, arb = false, runTests = true, user = "user", remark = "remark")(new MetaConnectionMock, databases, logger, new NamedMoveStatesHolder())
+    check(forAll(migGen(databases))(mig => {
+      MulipleDatabasesHandling.applyMigrations(ms = Seq(mig), imo = None, arb = false, runTests = true, user = "user", remark = "remark")(new MetaConnectionMock, databases, logger, new NamedMoveStatesHolder())
+    }))
   }
 
   test("apply 10000 migrations - smoke") {
 
     val databases = Map(DatabaseId("KAKTUS") -> new DatabaseMock(new ConnectionMock))
 
-    val mig = migGen(databases).apply(params, seed()).get // bochn
+    check(forAll(migGen(databases))(mig => {
 
-    val metaConn = new MetaConnectionMock
+      val metaConn = new MetaConnectionMock
 
-    MulipleDatabasesHandling.applyMigrations(ms = Seq.fill(10000)(mig), imo = None, arb = false, runTests = true, user = "user", remark = "remark")(metaConn, databases, logger, new NamedMoveStatesHolder())
+      MulipleDatabasesHandling.applyMigrations(ms = Seq.fill(10000)(mig), imo = None, arb = false, runTests = true, user = "user", remark = "remark")(metaConn, databases, logger, new NamedMoveStatesHolder())
 
-    assert(metaConn.addCount === 10000)
+      metaConn.addCount == 10000
+    }))
   }
 
   class ScriptRecordingConnectionMock extends ConnectionMock {
@@ -71,16 +77,20 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val test: Test = ScriptTest.scriptTest(testScript)
 
-    val conn = new ScriptRecordingConnectionMock
+    val gen = for {
+      dbId <- nonEmptyAlphaStr
+      conn = new ScriptRecordingConnectionMock
+      databases = Map(DatabaseId(dbId) -> new DatabaseMock(conn))
+      mig <- migGen(databases).map(_.copy(tests = Seq(test)))
+    } yield (conn, databases, mig)
 
-    val databases = Map(DatabaseId("KAKTUS") -> new DatabaseMock(conn))
+    check(forAll(gen) {case (conn, databases, mig) => {
+      MulipleDatabasesHandling.applyMigrations(ms = Seq(mig), imo = None, arb = false, runTests = true, user = "user", remark = "remark")(new MetaConnectionMock, databases, logger, new NamedMoveStatesHolder())
 
-    val mig = migGen(databases).map(_.copy(tests = Seq(test))).apply(params, seed()).get // bochn
-
-    MulipleDatabasesHandling.applyMigrations(ms = Seq(mig), imo = None, arb = false, runTests = true, user = "user", remark = "remark")(new MetaConnectionMock, databases, logger, new NamedMoveStatesHolder())
-
-    assert(conn.testScriptSeq.size === 1, s"Failed for migration: $mig")
-    assert(conn.testScriptSeq(0) === testScript)
+      Prop(conn.testScriptSeq.size == 1) :| s"size of testScriptSeq not 1 for migration: $mig" &&
+        Prop(conn.testScriptSeq(0) == testScript) :| s"testScriptSeq(0) does not equal testScript for migration: $mig"
+    }
+    })
   }
 
   test("apply one migration with test - but don't run tests") {
@@ -88,15 +98,19 @@ class DbHandlingTest extends FunSuite with PropTesting {
 
     val test: Test = ScriptTest.scriptTest(testScript)
 
-    val conn = new ScriptRecordingConnectionMock
+    val gen = for {
+      dbId <- nonEmptyAlphaStr
+      conn = new ScriptRecordingConnectionMock
+      databases = Map(DatabaseId(dbId) -> new DatabaseMock(conn))
+      mig <- migGen(databases).map(_.copy(tests = Seq(test)))
+    } yield (conn, databases, mig)
 
-    val databases = Map(DatabaseId("KAKTUS") -> new DatabaseMock(conn))
+    check(forAll(gen) {case (conn, databases, mig) => {
+      MulipleDatabasesHandling.applyMigrations(ms = Seq(mig), imo = None, arb = false, runTests = false, user = "user", remark = "remark")(new MetaConnectionMock, databases, logger, new NamedMoveStatesHolder())
 
-    val mig = migGen(databases).map(_.copy(tests = Seq(test))).apply(params, seed()).get // bochn
-
-    MulipleDatabasesHandling.applyMigrations(ms = Seq(mig), imo = None, arb = false, runTests = false, user = "user", remark = "remark")(new MetaConnectionMock, databases, logger, new NamedMoveStatesHolder())
-
-    assert(conn.testScriptSeq.size === 0)
+      Prop(conn.testScriptSeq.size == 0) :| s"size of testScriptSeq not 0 for migration: $mig"
+    }
+    })
   }
 
   def good(i: Int) = Script("good" + i.toString, "good")
